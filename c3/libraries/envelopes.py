@@ -393,7 +393,9 @@ def gaussian_sigma(t, params):
         tf.sqrt(2 * np.pi * sigma**2) * tf.math.erf(t_final / (np.sqrt(8) * sigma))
         - t_final * offset
     )
-    return (gauss - offset) / norm
+    # return (gauss - offset) / norm
+    shape = (gauss - offset) / norm
+    return tf_complexify(shape)
 
 
 @deprecated("Using standard width. Better use gaussian_sigma().")
@@ -584,3 +586,41 @@ def flattop_variant(t, params):
         else:
             value[i] = 0
     return tf_complexify(value)
+
+
+@env_reg_deco
+def hann(t, params):
+    """
+    Hann function-shaped envelope. Maximum value is 1, area is given by length.
+
+    Parameters
+    ----------
+    params : dict
+        t_final : float
+            Total length of the Gaussian.
+        sigma: float
+            Width of the Gaussian.
+
+    """
+    t_final = tf.cast(params["t_final"].get_value(), tf.float64)
+    hann_window = 0.5 * (1 - tf.cos(2 * np.pi * t / t_final))
+    return tf_complexify(hann_window)
+
+
+@env_reg_deco
+def hamming(t, params):
+    """
+    Hamming function-shaped envelope. Maximum value is 1, area is given by length.
+
+    Parameters
+    ----------
+    params : dict
+        t_final : float
+            Total length of the Gaussian.
+        sigma: float
+            Width of the Gaussian.
+
+    """
+    t_final = tf.cast(params["t_final"].get_value(), tf.float64)
+    hamming_window = 25 / 46 - (1 - 25 / 46) * tf.cos(2 * np.pi * t / t_final)
+    return tf_complexify(hamming_window)

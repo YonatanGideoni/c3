@@ -6,6 +6,7 @@ from typing import List, Dict
 
 from scipy.optimize import curve_fit
 
+from c3.parametermap import ParameterMap as pmap
 from c3.signal.gates import Instruction
 from c3.utils.tf_utils import (
     tf_ave,
@@ -788,3 +789,63 @@ def orbit_infid(
 
         infids.append(infid)
     return tf_ave(infids)
+
+
+def sparse_unitary_infid_set(
+    propagators: dict, instructions: dict, pmap, index, dims, n_eval=-1
+):
+    """
+    Mean unitary overlap between ideal and actually performed gate for the gates in
+    propagators.
+
+    Parameters
+    ----------
+    propagators : dict
+        Contains actual unitary representations of the gates, resulting from physical
+        simulation
+    instructions : dict
+        Contains the perfect unitary representations of the gates, identified by a key.
+    index : List[int]
+        Index of the qubit(s) in the Hilbert space to be evaluated
+    dims : list
+        List of dimensions of qubits
+    n_eval : int
+        Number of evaluation
+
+    Returns
+    -------
+    tf.float
+        Unitary fidelity.
+    """
+    infids = []
+    infid_cost = 0
+    for gate, propagator in propagators.items():
+        perfect_gate = instructions[gate].get_ideal_gate(dims, index)
+        infid = unitary_infid(perfect_gate, propagator, index, dims)
+        infids.append(infid)
+        infid_cost = tf.reduce_mean(infids)
+
+    # print(f"infid cost is: {infid_cost}")
+    l1_cost = 0
+    meta_param = 1e-4
+
+    ############ sqrt(abs) loss function #############
+    for gate, instruction in pmap.instructions.items():
+        for chan, channel in instruction.comps.items():
+            for com, component in channel.items():
+                if "amp" in component.params:
+                    amplitude = component.params["amp"].get_value()
+                    l1_cost += tf.math.sqrt(tf.math.abs(amplitude))
+
+    """
+    ############# log(abs) loss function #############
+    for gate, instruction in pmap.instructions.items():
+        for chan, channel in instruction.comps.items():
+            for com, component in channel.items():
+                if "amp" in component.params:
+                    amplitude = component.params["amp"].get_value()
+                    l1_cost += -tf.math.log(tf.math.abs(amplitude))
+    """
+
+    # print(f"L1 norm is: {l1_cost}")
+    return infid_cost + meta_param * l1_cost

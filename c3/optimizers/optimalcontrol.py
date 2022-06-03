@@ -175,6 +175,7 @@ class OptimalControl(Optimizer):
         dims = self.pmap.model.dims
         propagators = self.exp.compute_propagators()
 
+        """
         goal = self.fid_func(
             propagators=propagators,
             instructions=self.pmap.instructions,
@@ -182,6 +183,18 @@ class OptimalControl(Optimizer):
             dims=dims,
             n_eval=self.evaluation + 1,
             **self.fid_func_kwargs,
+        ) 
+        self.evaluation += 1 
+        """
+        goal = self.fid_func(
+            propagators=propagators,
+            instructions=self.pmap.instructions,
+            pmap=self.pmap,
+            index=self.index,
+            dims=dims,
+            n_eval=self.evaluation + 1,
+            **self.fid_func_kwargs,
         )
         self.evaluation += 1
+
         return goal

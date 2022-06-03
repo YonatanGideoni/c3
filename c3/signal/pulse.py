@@ -39,6 +39,7 @@ class Envelope(C3obj):
         params: Dict[str, Qty] = {},
         shape: Union[Callable, str] = None,
         use_t_before=False,
+        normalize_pulse=False,
     ):
         if isinstance(shape, str):
             self.shape = envelopes[shape]
@@ -53,7 +54,8 @@ class Envelope(C3obj):
             "t_final": Qty(value=1.0, min_val=-1.0, max_val=+1.0, unit="s"),
         }
         default_params.update(params)
-        self.set_use_t_before(use_t_before)
+        # self.set_use_t_before(use_t_before)
+        self.set_normalize_pulse(normalize_pulse)
         super().__init__(
             name=name,
             desc=desc,
@@ -89,9 +91,16 @@ class Envelope(C3obj):
         repr_str += "shape: " + self.shape.__name__ + ", "
         return repr_str
 
-    def set_use_t_before(self, use_t_before):
+    """def set_use_t_before(self, use_t_before):
         if use_t_before:
             self.get_shape_values = self._get_shape_values_before
+        else:
+            self.get_shape_values = self._get_shape_values_just
+    """
+
+    def set_normalize_pulse(self, normalize_pulse):
+        if normalize_pulse:
+            self.get_shape_values = self._get_shape_values_normalized
         else:
             self.get_shape_values = self._get_shape_values_just
 
@@ -138,7 +147,27 @@ class Envelope(C3obj):
             Vector of time samples.
         """
         mask = self.compute_mask(ts, t_final)
+        env = mask * self.shape(ts, self.params)
+        # print(env)
         return mask * self.shape(ts, self.params)
+
+    def _get_shape_values_normalized(self, ts, t_final=1):
+        """Returns the normalized form of the shape function at the specified times.
+
+        Parameters
+        ----------
+        ts : tf.Tensor
+            Vector of time samples.
+        """
+        # Normalization code here
+        mask = self.compute_mask(ts, t_final)
+        env = mask * self.shape(ts, self.params)
+        # print(env)
+        # assert False, f'The time sample array is {ts}'
+        # assert False, f'The shape is {env.get_shape()}, and the tensor is {env}'
+        area = tf.reduce_sum(env, keepdims=True) * 0.5
+        # assert False, f'The shape is {area.get_shape()}, and the tensor is {area}, env normalised is {env / area}, shape of env is {env.get_shape()}'
+        return env / area
 
 
 @comp_reg_deco
