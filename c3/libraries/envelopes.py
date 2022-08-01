@@ -243,10 +243,10 @@ def flattop_risefall(t, params):
     t_up = risefall
     t_down = t_final - risefall
     return (
-        (1 + tf.math.erf((t - t_up) / risefall))
-        / 2
-        * (1 + tf.math.erf((-t + t_down) / risefall))
-        / 2
+            (1 + tf.math.erf((t - t_up) / risefall))
+            / 2
+            * (1 + tf.math.erf((-t + t_down) / risefall))
+            / 2
     )
 
 
@@ -270,10 +270,10 @@ def flattop(t, params):
     risefall = tf.cast(params["risefall"].get_value(), tf.float64)
 
     shape = (
-        (1 + tf.math.erf((t - t_up) / risefall))
-        / 2
-        * (1 + tf.math.erf((-t + t_down) / risefall))
-        / 2
+            (1 + tf.math.erf((t - t_up) / risefall))
+            / 2
+            * (1 + tf.math.erf((-t + t_down) / risefall))
+            / 2
     )
     return tf_complexify(shape)
 
@@ -350,7 +350,7 @@ def slepian_fourier(t, params):
     shape = tf.zeros_like(t)
     for n, coeff in enumerate(fourier_coeffs):
         shape += coeff * (
-            1 - tf.cos(2 * np.pi * (n + 1) * (x - (t_final - length) / 2) / length)
+                1 - tf.cos(2 * np.pi * (n + 1) * (x - (t_final - length) / 2) / length)
         )
     if "sin_coeffs" in params:
         for n, coeff in enumerate(params["sin_coeffs"].get_value()):
@@ -386,12 +386,12 @@ def gaussian_sigma(t, params):
     """
     t_final = tf.cast(params["t_final"].get_value(), tf.float64)
     sigma = tf.cast(params["sigma"].get_value(), tf.float64)
-    gauss = tf.exp(-((t - t_final / 2) ** 2) / (2 * sigma**2))
+    gauss = tf.exp(-((t - t_final / 2) ** 2) / (2 * sigma ** 2))
 
-    offset = tf.exp(-(t_final**2) / (8 * sigma**2))
+    offset = tf.exp(-(t_final ** 2) / (8 * sigma ** 2))
     norm = (
-        tf.sqrt(2 * np.pi * sigma**2) * tf.math.erf(t_final / (np.sqrt(8) * sigma))
-        - t_final * offset
+            tf.sqrt(2 * np.pi * sigma ** 2) * tf.math.erf(t_final / (np.sqrt(8) * sigma))
+            - t_final * offset
     )
     return (gauss - offset) / norm
 
@@ -483,7 +483,7 @@ def gaussian_nonorm(t, params):
     # TODO Add zeroes for t>t_final
     t_final = tf.cast(params["t_final"].get_value(), tf.float64)
     sigma = params["sigma"].get_value()
-    gauss = tf.exp(-((t - t_final / 2) ** 2) / (2 * sigma**2))
+    gauss = tf.exp(-((t - t_final / 2) ** 2) / (2 * sigma ** 2))
     return tf_complexify(gauss)
 
 
@@ -493,9 +493,9 @@ def gaussian_der_nonorm(t, params):
     t_final = tf.cast(params["t_final"].get_value(), tf.float64)
     sigma = tf.cast(params["sigma"].get_value(), tf.float64)
     gauss_der = (
-        tf.exp(-((t - t_final / 2) ** 2) / (2 * sigma**2))
-        * (t - t_final / 2)
-        / sigma**2
+            tf.exp(-((t - t_final / 2) ** 2) / (2 * sigma ** 2))
+            * (t - t_final / 2)
+            / sigma ** 2
     )
     return gauss_der
 
@@ -506,13 +506,13 @@ def gaussian_der(t, params):
     t_final = tf.cast(params["t_final"].get_value(), tf.float64)
     sigma = tf.cast(params["sigma"].get_value(), tf.float64)
     gauss_der = (
-        tf.exp(-((t - t_final / 2) ** 2) / (2 * sigma**2))
-        * (t - t_final / 2)
-        / sigma**2
+            tf.exp(-((t - t_final / 2) ** 2) / (2 * sigma ** 2))
+            * (t - t_final / 2)
+            / sigma ** 2
     )
-    norm = tf.sqrt(2 * np.pi * sigma**2) * tf.math.erf(
+    norm = tf.sqrt(2 * np.pi * sigma ** 2) * tf.math.erf(
         t_final / (tf.cast(tf.sqrt(8.0), tf.float64) * sigma)
-    ) - t_final * tf.exp(-(t_final**2) / (8 * sigma**2))
+    ) - t_final * tf.exp(-(t_final ** 2) / (8 * sigma ** 2))
     return tf_complexify(gauss_der / norm)
 
 
@@ -521,11 +521,11 @@ def drag_sigma(t, params):
     """Second order gaussian."""
     t_final = tf.cast(params["t_final"].get_value(), tf.float64)
     sigma = tf.cast(params["sigma"].get_value(), tf.float64)
-    drag = tf.exp(-((t - t_final / 2) ** 2) / (2 * sigma**2))
-    norm = tf.sqrt(2 * np.pi * sigma**2) * tf.math.erf(
+    drag = tf.exp(-((t - t_final / 2) ** 2) / (2 * sigma ** 2))
+    norm = tf.sqrt(2 * np.pi * sigma ** 2) * tf.math.erf(
         t_final / (np.sqrt(8) * sigma)
-    ) - t_final * tf.exp(-(t_final**2) / (8 * sigma**2))
-    offset = tf.exp(-(t_final**2) / (8 * sigma**2))
+    ) - t_final * tf.exp(-(t_final ** 2) / (8 * sigma ** 2))
+    offset = tf.exp(-(t_final ** 2) / (8 * sigma ** 2))
     return tf_complexify((drag - offset) ** 2 / norm)
 
 
@@ -547,17 +547,17 @@ def drag_der(t, params):
     """Derivative of second order gaussian."""
     t_final = tf.cast(params["t_final"].get_value(), tf.float64)
     sigma = tf.cast(params["sigma"].get_value(), tf.float64)
-    norm = tf.sqrt(2 * np.pi * sigma**2) * tf.math.erf(
+    norm = tf.sqrt(2 * np.pi * sigma ** 2) * tf.math.erf(
         t_final / (np.sqrt(8) * sigma)
-    ) - t_final * tf.exp(-(t_final**2) / (8 * sigma**2))
-    offset = tf.exp(-(t_final**2) / (8 * sigma**2))
+    ) - t_final * tf.exp(-(t_final ** 2) / (8 * sigma ** 2))
+    offset = tf.exp(-(t_final ** 2) / (8 * sigma ** 2))
     der = (
-        -2
-        * (tf.exp(-((t - t_final / 2) ** 2) / (2 * sigma**2)) - offset)
-        * (np.exp(-((t - t_final / 2) ** 2) / (2 * sigma**2)))
-        * (t - t_final / 2)
-        / sigma**2
-        / norm
+            -2
+            * (tf.exp(-((t - t_final / 2) ** 2) / (2 * sigma ** 2)) - offset)
+            * (np.exp(-((t - t_final / 2) ** 2) / (2 * sigma ** 2)))
+            * (t - t_final / 2)
+            / sigma ** 2
+            / norm
     )
     return tf_complexify(der)
 
@@ -576,11 +576,43 @@ def flattop_variant(t, params):
     sigma = np.sqrt(2) * ramp * 0.2
     for i, e in enumerate(t):
         if t_up <= e <= t_up + ramp:
-            value[i] = np.exp(-((e - t_up - ramp) ** 2) / (2 * sigma**2))
+            value[i] = np.exp(-((e - t_up - ramp) ** 2) / (2 * sigma ** 2))
         elif t_up + ramp < e < t_down - ramp:
             value[i] = 1
         elif t_down >= e >= t_down - ramp:
-            value[i] = np.exp(-((e - t_down + ramp) ** 2) / (2 * sigma**2))
+            value[i] = np.exp(-((e - t_down + ramp) ** 2) / (2 * sigma ** 2))
         else:
             value[i] = 0
     return tf_complexify(value)
+
+
+@env_reg_deco
+def blackman_window(t, params, DEFAULT_ALPHA=0.16):
+    """
+    Blackman window shaped envelope. The default alpha results in the usual approximation of
+    the exact Blackman window.
+
+    Parameters
+    ----------
+    t
+    params : dict
+        t_final : float
+            Total length of the signal.
+        alpha: float
+            alpha to use to determine the coefficients' values.
+    DEFAULT_ALPHA: float
+        Default value of alpha to use.
+
+    Returns
+    -------
+    Signal
+    """
+    # TODO Add zeroes for t>t_final
+    t_final = tf.cast(params["t_final"].get_value(), tf.float64)
+    alpha = params.get('alpha', DEFAULT_ALPHA)
+    a0 = (1 - alpha) / 2
+    a1 = 1 / 2
+    a2 = alpha / 2
+
+    blackman_window = a0 - a1 * tf.cos(2 * np.pi * t / t_final) + a2 * np.cos(4 * np.pi * t / t_final)
+    return tf_complexify(blackman_window)
