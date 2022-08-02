@@ -32,14 +32,13 @@ class Envelope(C3obj):
     """
 
     def __init__(
-        self,
-        name: str,
-        desc: str = " ",
-        comment: str = " ",
-        params: Dict[str, Qty] = {},
-        shape: Union[Callable, str] = None,
-        use_t_before=False,
-        normalize_pulse=False,
+            self,
+            name: str,
+            desc: str = " ",
+            comment: str = " ",
+            params: Dict[str, Qty] = {},
+            shape: Union[Callable, str] = None,
+            normalize_pulse=False,
     ):
         if isinstance(shape, str):
             self.shape = envelopes[shape]
@@ -54,7 +53,6 @@ class Envelope(C3obj):
             "t_final": Qty(value=1.0, min_val=-1.0, max_val=+1.0, unit="s"),
         }
         default_params.update(params)
-        # self.set_use_t_before(use_t_before)
         self.set_normalize_pulse(normalize_pulse)
         super().__init__(
             name=name,
@@ -90,13 +88,6 @@ class Envelope(C3obj):
             repr_str += str(key) + " : " + str(item) + ", "
         repr_str += "shape: " + self.shape.__name__ + ", "
         return repr_str
-
-    """def set_use_t_before(self, use_t_before):
-        if use_t_before:
-            self.get_shape_values = self._get_shape_values_before
-        else:
-            self.get_shape_values = self._get_shape_values_just
-    """
 
     def set_normalize_pulse(self, normalize_pulse):
         if normalize_pulse:
@@ -159,27 +150,22 @@ class Envelope(C3obj):
         ts : tf.Tensor
             Vector of time samples.
         """
-        # Normalization code here
         mask = self.compute_mask(ts, t_final)
         env = mask * self.shape(ts, self.params)
-        # print(env)
-        # assert False, f'The time sample array is {ts}'
-        # assert False, f'The shape is {env.get_shape()}, and the tensor is {env}'
         area = tf.reduce_sum(env, keepdims=True) * 0.5
-        # assert False, f'The shape is {area.get_shape()}, and the tensor is {area}, env normalised is {env / area}, shape of env is {env.get_shape()}'
         return env / area
 
 
 @comp_reg_deco
 class EnvelopeDrag(Envelope):
     def __init__(
-        self,
-        name: str,
-        desc: str = " ",
-        comment: str = " ",
-        params: dict = {},
-        shape: types.FunctionType = None,
-        use_t_before=False,
+            self,
+            name: str,
+            desc: str = " ",
+            comment: str = " ",
+            params: dict = {},
+            shape: types.FunctionType = None,
+            use_t_before=False,
     ):
         super().__init__(
             name=name,
@@ -203,7 +189,7 @@ class EnvelopeDrag(Envelope):
             t.watch(ts)
             env = tf.math.real(self.base_env(ts, t_final))
         denv = (
-            t.gradient(env, ts, unconnected_gradients=tf.UnconnectedGradients.ZERO) * dt
+                t.gradient(env, ts, unconnected_gradients=tf.UnconnectedGradients.ZERO) * dt
         )  # Derivative W.R.T. to bins
         delta = self.params["delta"].get_value()
         return tf.complex(env, -denv * delta)
@@ -224,13 +210,13 @@ class EnvelopeNetZero(Envelope):
     """
 
     def __init__(
-        self,
-        name: str,
-        desc: str = " ",
-        comment: str = " ",
-        params: dict = {},
-        shape: types.FunctionType = None,
-        use_t_before=False,
+            self,
+            name: str,
+            desc: str = " ",
+            comment: str = " ",
+            params: dict = {},
+            shape: types.FunctionType = None,
+            use_t_before=False,
     ):
         super().__init__(
             name=name,
@@ -272,11 +258,11 @@ class Carrier(C3obj):
     """Represents the carrier of a pulse."""
 
     def __init__(
-        self,
-        name: str,
-        desc: str = " ",
-        comment: str = " ",
-        params: dict = {},
+            self,
+            name: str,
+            desc: str = " ",
+            comment: str = " ",
+            params: dict = {},
     ):
         params_default = {
             "freq": Qty(value=0.0, min_val=-1.0, max_val=+1.0, unit="V"),

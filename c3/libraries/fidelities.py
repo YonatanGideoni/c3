@@ -85,7 +85,7 @@ def open_system_deco(func):
 @fid_reg_deco
 @state_deco
 def state_transfer_infid_set(
-    propagators: dict, instructions: dict, index, dims, psi_0, n_eval=-1, proj=True
+        propagators: dict, instructions: dict, index, dims, psi_0, n_eval=-1, proj=True
 ):
     """
     Mean state transfer infidelity.
@@ -153,7 +153,7 @@ def state_transfer_infid(ideal: np.ndarray, actual: tf.constant, index, dims, ps
 @fid_reg_deco
 @unitary_deco
 def unitary_infid(
-    ideal: np.ndarray, actual: tf.Tensor, index: List[int] = None, dims=None
+        ideal: np.ndarray, actual: tf.Tensor, index: List[int] = None, dims=None
 ) -> tf.Tensor:
     """
     Unitary overlap between ideal and actually performed gate.
@@ -222,7 +222,7 @@ def unitary_infid_set(propagators: dict, instructions: dict, index, dims, n_eval
 @fid_reg_deco
 @open_system_deco
 def lindbladian_unitary_infid(
-    ideal: np.ndarray, actual: tf.constant, index=[0], dims=[2]
+        ideal: np.ndarray, actual: tf.constant, index=[0], dims=[2]
 ) -> tf.constant:
     """
     Variant of the unitary fidelity for the Lindbladian propagator.
@@ -254,7 +254,7 @@ def lindbladian_unitary_infid(
 @open_system_deco
 @set_deco
 def lindbladian_unitary_infid_set(
-    propagators: dict, instructions: Dict[str, Instruction], index, dims, n_eval
+        propagators: dict, instructions: Dict[str, Instruction], index, dims, n_eval
 ):
     """
     Variant of the mean unitary fidelity for the Lindbladian propagator.
@@ -289,7 +289,7 @@ def lindbladian_unitary_infid_set(
 @fid_reg_deco
 @open_system_deco
 def average_infid(
-    ideal: np.ndarray, actual: tf.Tensor, index: List[int] = [0], dims=[2]
+        ideal: np.ndarray, actual: tf.Tensor, index: List[int] = [0], dims=[2]
 ) -> tf.constant:
     """
     Average fidelity uses the Pauli basis to compare. Thus, perfect gates are
@@ -316,7 +316,7 @@ def average_infid(
 @open_system_deco
 @set_deco
 def average_infid_set(
-    propagators: dict, instructions: dict, index: List[int], dims, n_eval=-1
+        propagators: dict, instructions: dict, index: List[int], dims, n_eval=-1
 ):
     """
     Mean average fidelity over all gates in propagators.
@@ -378,7 +378,7 @@ def average_infid_seq(propagators: dict, instructions: dict, index, dims, n_eval
 @fid_reg_deco
 @open_system_deco
 def lindbladian_average_infid(
-    ideal: np.ndarray, actual: tf.constant, index=[0], dims=[2]
+        ideal: np.ndarray, actual: tf.constant, index=[0], dims=[2]
 ) -> tf.constant:
     """
     Average fidelity uses the Pauli basis to compare. Thus, perfect gates are
@@ -405,7 +405,7 @@ def lindbladian_average_infid(
 @open_system_deco
 @set_deco
 def lindbladian_average_infid_set(
-    propagators: dict, instructions: Dict[str, Instruction], index, dims, n_eval
+        propagators: dict, instructions: Dict[str, Instruction], index, dims, n_eval
 ):
     """
     Mean average fidelity over all gates in propagators.
@@ -459,7 +459,7 @@ def epc_analytical(propagators: dict, index, dims, proj: bool, cliffords=False):
 
 @fid_reg_deco
 def lindbladian_epc_analytical(
-    propagators: dict, index, dims, proj: bool, cliffords=False
+        propagators: dict, index, dims, proj: bool, cliffords=False
 ):
     num_gates = len(dims)
     if cliffords:
@@ -514,14 +514,14 @@ def lindbladian_population(propagators: dict, lvl: int, gate: str):
 
 @fid_reg_deco
 def RB(
-    propagators,
-    min_length: int = 5,
-    max_length: int = 500,
-    num_lengths: int = 20,
-    num_seqs: int = 30,
-    logspace=False,
-    lindbladian=False,
-    padding="",
+        propagators,
+        min_length: int = 5,
+        max_length: int = 500,
+        num_lengths: int = 20,
+        num_seqs: int = 30,
+        logspace=False,
+        lindbladian=False,
+        padding="",
 ):
     gate = list(propagators.keys())[0]
     U = propagators[gate]
@@ -593,11 +593,11 @@ def RB(
 
 @fid_reg_deco
 def lindbladian_RB_left(
-    propagators: dict,
-    gate: str,
-    index,
-    dims,
-    proj: bool = False,
+        propagators: dict,
+        gate: str,
+        index,
+        dims,
+        proj: bool = False,
 ):
     return RB(propagators, padding="left")
 
@@ -609,13 +609,13 @@ def lindbladian_RB_right(propagators: dict, gate: str, index, dims, proj: bool):
 
 @fid_reg_deco
 def leakage_RB(
-    propagators,
-    min_length: int = 5,
-    max_length: int = 500,
-    num_lengths: int = 20,
-    num_seqs: int = 30,
-    logspace=False,
-    lindbladian=False,
+        propagators,
+        min_length: int = 5,
+        max_length: int = 500,
+        num_lengths: int = 20,
+        num_seqs: int = 30,
+        logspace=False,
+        lindbladian=False,
 ):
     gate = list(propagators.keys())[0]
     U = propagators[gate]
@@ -753,13 +753,13 @@ def leakage_RB(
 
 @fid_reg_deco
 def orbit_infid(
-    propagators,
-    RB_number: int = 30,
-    RB_length: int = 20,
-    lindbladian=False,
-    shots: int = None,
-    seqs=None,
-    noise=None,
+        propagators,
+        RB_number: int = 30,
+        RB_length: int = 20,
+        lindbladian=False,
+        shots: int = None,
+        seqs=None,
+        noise=None,
 ):
     if not seqs:
         seqs = single_length_RB(RB_number=RB_number, RB_length=RB_length)
@@ -792,7 +792,7 @@ def orbit_infid(
 
 
 def sparse_unitary_infid_set(
-    propagators: dict, instructions: dict, pmap, index, dims, n_eval=-1
+        propagators: dict, instructions: dict, pmap, index, dims, n_eval=-1, loss_func_type: str = 'sqrt'
 ):
     """
     Mean unitary overlap between ideal and actually performed gate for the gates in
@@ -825,27 +825,21 @@ def sparse_unitary_infid_set(
         infids.append(infid)
         infid_cost = tf.reduce_mean(infids)
 
-    # print(f"infid cost is: {infid_cost}")
-    l1_cost = 0
+    cost = 0
     meta_param = 1e-4
 
-    ############ sqrt(abs) loss function #############
+    if loss_func_type == 'sqrt':
+        loss_func = lambda amp: tf.math.sqrt(tf.math.abs(amp))
+    elif loss_func_type == 'log':
+        loss_func = lambda amp: -tf.math.log(tf.math.abs(amp))
+    else:
+        raise NotImplementedError(f"Haven't implemented a loss function of the type {loss_func_type} yet.")
+
     for gate, instruction in pmap.instructions.items():
         for chan, channel in instruction.comps.items():
             for com, component in channel.items():
                 if "amp" in component.params:
                     amplitude = component.params["amp"].get_value()
-                    l1_cost += tf.math.sqrt(tf.math.abs(amplitude))
+                    cost += loss_func(amplitude)
 
-    """
-    ############# log(abs) loss function #############
-    for gate, instruction in pmap.instructions.items():
-        for chan, channel in instruction.comps.items():
-            for com, component in channel.items():
-                if "amp" in component.params:
-                    amplitude = component.params["amp"].get_value()
-                    l1_cost += -tf.math.log(tf.math.abs(amplitude))
-    """
-
-    # print(f"L1 norm is: {l1_cost}")
-    return infid_cost + meta_param * l1_cost
+    return infid_cost + meta_param * cost

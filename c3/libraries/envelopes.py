@@ -629,9 +629,6 @@ def hann(t, params):
     params : dict
         t_final : float
             Total length of the Gaussian.
-        sigma: float
-            Width of the Gaussian.
-
     """
     t_final = tf.cast(params["t_final"].get_value(), tf.float64)
     hann_window = 0.5 * (1 - tf.cos(2 * np.pi * t / t_final))
@@ -648,9 +645,6 @@ def hamming(t, params):
     params : dict
         t_final : float
             Total length of the Gaussian.
-        sigma: float
-            Width of the Gaussian.
-
     """
     t_final = tf.cast(params["t_final"].get_value(), tf.float64)
     hamming_window = 25 / 46 - (1 - 25 / 46) * tf.cos(2 * np.pi * t / t_final)

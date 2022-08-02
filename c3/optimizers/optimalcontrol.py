@@ -42,21 +42,21 @@ class OptimalControl(Optimizer):
     """
 
     def __init__(
-        self,
-        fid_func,
-        fid_subspace,
-        pmap,
-        dir_path=None,
-        callback_fids=None,
-        algorithm=None,
-        initial_point: str = "",
-        store_unitaries=False,
-        options={},
-        run_name=None,
-        interactive=True,
-        include_model=False,
-        logger=None,
-        fid_func_kwargs={},
+            self,
+            fid_func,
+            fid_subspace,
+            pmap,
+            dir_path=None,
+            callback_fids=None,
+            algorithm=None,
+            initial_point: str = "",
+            store_unitaries=False,
+            options={},
+            run_name=None,
+            interactive=True,
+            include_model=False,
+            logger=None,
+            fid_func_kwargs={},
     ) -> None:
         if type(algorithm) is str:
             algorithm = algorithms[algorithm]
@@ -175,17 +175,6 @@ class OptimalControl(Optimizer):
         dims = self.pmap.model.dims
         propagators = self.exp.compute_propagators()
 
-        """
-        goal = self.fid_func(
-            propagators=propagators,
-            instructions=self.pmap.instructions,
-            index=self.index,
-            dims=dims,
-            n_eval=self.evaluation + 1,
-            **self.fid_func_kwargs,
-        ) 
-        self.evaluation += 1 
-        """
         goal = self.fid_func(
             propagators=propagators,
             instructions=self.pmap.instructions,
