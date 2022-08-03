@@ -793,7 +793,7 @@ def orbit_infid(
 
 def sparse_unitary_infid_set(
         propagators: dict, instructions: dict, pmap, index, dims, n_eval=-1, loss_func_type: str = 'sqrt'
-):
+) -> tf.float64:
     """
     Mean unitary overlap between ideal and actually performed gate for the gates in
     propagators.
@@ -809,8 +809,10 @@ def sparse_unitary_infid_set(
         Index of the qubit(s) in the Hilbert space to be evaluated
     dims : list
         List of dimensions of qubits
-    n_eval : int
-        Number of evaluation
+    n_eval: int
+        Number of function evaluations
+    loss_func_type: str
+        Type of loss function to use for regularization term
 
     Returns
     -------
