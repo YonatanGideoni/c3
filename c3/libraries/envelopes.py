@@ -615,7 +615,7 @@ def blackman_window(t, params, DEFAULT_ALPHA=0.16):
     a1 = 1 / 2
     a2 = alpha / 2
 
-    blackman_window = a0 - a1 * tf.cos(2 * np.pi * t / t_final) + a2 * np.cos(4 * np.pi * t / t_final)
+    blackman_window = a0 - a1 * tf.cos(2 * np.pi * t / t_final) + a2 * tf.cos(4 * np.pi * t / t_final)
     return tf_complexify(blackman_window)
 
 
