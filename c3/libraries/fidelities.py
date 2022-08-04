@@ -792,7 +792,8 @@ def orbit_infid(
 
 
 def sparse_unitary_infid_set(
-        propagators: dict, instructions: dict, pmap, index, dims, n_eval=-1, loss_func_type: str = 'sqrt'
+        propagators: dict, instructions: dict, pmap, index, dims, n_eval=-1, loss_func_type: str = 'sqrt',
+        regularization_strength: float = 1e-4
 ) -> tf.float64:
     """
     Mean unitary overlap between ideal and actually performed gate for the gates in
@@ -813,23 +814,23 @@ def sparse_unitary_infid_set(
         Number of function evaluations
     loss_func_type: str
         Type of loss function to use for regularization term
+    regularization_strength: float
+        Often denoted by lambda, the relative magnitude of the regularization term
 
     Returns
     -------
     tf.float
         Unitary fidelity.
     """
-    infids = []
+    # fidelity term
     infid_cost = 0
     for gate, propagator in propagators.items():
         perfect_gate = instructions[gate].get_ideal_gate(dims, index)
-        infid = unitary_infid(perfect_gate, propagator, index, dims)
-        infids.append(infid)
-        infid_cost = tf.reduce_mean(infids)
+        infid_cost += unitary_infid(perfect_gate, propagator, index, dims)
 
-    cost = 0
-    meta_param = 1e-4
+    avg_infid_cost = infid_cost / len(propagators)
 
+    # regularization term
     if loss_func_type == 'sqrt':
         loss_func = lambda amp: tf.math.sqrt(tf.math.abs(amp))
     elif loss_func_type == 'log':
@@ -837,11 +838,16 @@ def sparse_unitary_infid_set(
     else:
         raise NotImplementedError(f"Haven't implemented a loss function of the type {loss_func_type} yet.")
 
+    regularization_cost = 0
+    n_pulses = 0
     for gate, instruction in pmap.instructions.items():
         for chan, channel in instruction.comps.items():
             for com, component in channel.items():
                 if "amp" in component.params:
                     amplitude = component.params["amp"].get_value()
-                    cost += loss_func(amplitude)
+                    regularization_cost += loss_func(amplitude)
 
-    return infid_cost + meta_param * cost
+                    n_pulses += 1
+    avg_reg_cost = regularization_cost / n_pulses
+
+    return avg_infid_cost + regularization_strength * avg_reg_cost
