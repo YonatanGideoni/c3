@@ -488,6 +488,7 @@ def gaussian_nonorm(t, params):
     return tf_complexify(gauss)
 
 
+# TODO - change length of resulting tensors in left/right half gaussians so it matches their area?
 @env_reg_deco
 def left_half_gaussian_nonorm(t, params):
     """
@@ -504,10 +505,8 @@ def left_half_gaussian_nonorm(t, params):
     """
     # TODO Add zeroes for t>t_final
     t_final = tf.cast(params["t_final"].get_value(), tf.float64)
-    sigma = params["sigma"].get_value()
-    gauss = np.exp(-((t - t_final / 2) ** 2) / (2 * sigma ** 2))
-    gauss[t > t_final] = 0
-    return tf_complexify(gauss)
+    gauss = gaussian_nonorm(t, params)
+    return gauss * -tf.cast(tf.sign(t - t_final / 2) - 1., tf.complex128) / 2
 
 
 @env_reg_deco
@@ -525,11 +524,8 @@ def right_half_gaussian_nonorm(t, params):
 
     """
     # TODO Add zeroes for t>t_final
-    t_final = tf.cast(params["t_final"].get_value(), tf.float64)
-    sigma = params["sigma"].get_value()
-    gauss = np.exp(-((t - t_final / 2) ** 2) / (2 * sigma ** 2))
-    gauss[t <= t_final] = 0
-    return tf_complexify(gauss)
+    gauss = gaussian_nonorm(t, params)
+    return gauss - left_half_gaussian_nonorm(t, params)
 
 
 @env_reg_deco
@@ -693,3 +689,29 @@ def hamming(t, params):
     t_final = tf.cast(params["t_final"].get_value(), tf.float64)
     hamming_window = 25 / 46 - (1 - 25 / 46) * tf.cos(2 * np.pi * t / t_final)
     return tf_complexify(hamming_window)
+
+
+if __name__ == '__main__':
+    t_final = 7e-9
+    params = {
+        't_final': Qty(
+            value=t_final,
+            min_val=0.5 * t_final,
+            max_val=1.5 * t_final,
+            unit="s"
+        ),
+        'sigma': Qty(
+            value=t_final / 4,
+            min_val=t_final / 8,
+            max_val=t_final / 2,
+            unit="s"
+        )}
+    t = tf.constant(
+        [2.50e-10, 7.50e-10, 1.25e-09, 1.75e-09, 2.25e-09, 2.75e-09, 3.25e-09, 3.75e-09, 4.25e-09, 4.75e-09, 5.25e-09,
+         5.75e-09, 6.25e-09, 6.75e-09], shape=(14,), dtype=tf.float64)
+
+    res = left_half_gaussian_nonorm(t, params)
+    print(res)
+
+    res_working = gaussian_nonorm(t, params)
+    print(res_working)
