@@ -793,7 +793,7 @@ def orbit_infid(
 
 def sparse_unitary_infid_set(
         propagators: dict, instructions: dict, pmap, index, dims, n_eval=-1, loss_func_type: str = 'sqrt',
-        regularization_strength: float = 1e-4
+        reg_strength: float = 1e-4
 ) -> tf.float64:
     """
     Mean unitary overlap between ideal and actually performed gate for the gates in
@@ -814,7 +814,7 @@ def sparse_unitary_infid_set(
         Number of function evaluations
     loss_func_type: str
         Type of loss function to use for regularization term
-    regularization_strength: float
+    reg_strength: float
         Often denoted by lambda, the relative magnitude of the regularization term
 
     Returns
@@ -850,4 +850,4 @@ def sparse_unitary_infid_set(
                     n_pulses += 1
     avg_reg_cost = regularization_cost / n_pulses
 
-    return avg_infid_cost + regularization_strength * avg_reg_cost
+    return avg_infid_cost + reg_strength * avg_reg_cost
