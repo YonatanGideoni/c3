@@ -489,6 +489,50 @@ def gaussian_nonorm(t, params):
 
 
 @env_reg_deco
+def left_half_gaussian_nonorm(t, params):
+    """
+    Non-normalized left half of gaussian. Maximum value is 1, area is given by length.
+
+    Parameters
+    ----------
+    params : dict
+        t_final : float
+            Total length of the Gaussian.
+        sigma: float
+            Width of the Gaussian.
+
+    """
+    # TODO Add zeroes for t>t_final
+    t_final = tf.cast(params["t_final"].get_value(), tf.float64)
+    sigma = params["sigma"].get_value()
+    gauss = np.exp(-((t - t_final / 2) ** 2) / (2 * sigma ** 2))
+    gauss[t > t_final] = 0
+    return tf_complexify(gauss)
+
+
+@env_reg_deco
+def right_half_gaussian_nonorm(t, params):
+    """
+    Non-normalized right half of gaussian. Maximum value is 1, area is given by length.
+
+    Parameters
+    ----------
+    params : dict
+        t_final : float
+            Total length of the Gaussian.
+        sigma: float
+            Width of the Gaussian.
+
+    """
+    # TODO Add zeroes for t>t_final
+    t_final = tf.cast(params["t_final"].get_value(), tf.float64)
+    sigma = params["sigma"].get_value()
+    gauss = np.exp(-((t - t_final / 2) ** 2) / (2 * sigma ** 2))
+    gauss[t <= t_final] = 0
+    return tf_complexify(gauss)
+
+
+@env_reg_deco
 def gaussian_der_nonorm(t, params):
     """Derivative of the normalized gaussian (ifself not normalized)."""
     t_final = tf.cast(params["t_final"].get_value(), tf.float64)
