@@ -689,29 +689,3 @@ def hamming(t, params):
     t_final = tf.cast(params["t_final"].get_value(), tf.float64)
     hamming_window = 25 / 46 - (1 - 25 / 46) * tf.cos(2 * np.pi * t / t_final)
     return tf_complexify(hamming_window)
-
-
-if __name__ == '__main__':
-    t_final = 7e-9
-    params = {
-        't_final': Qty(
-            value=t_final,
-            min_val=0.5 * t_final,
-            max_val=1.5 * t_final,
-            unit="s"
-        ),
-        'sigma': Qty(
-            value=t_final / 4,
-            min_val=t_final / 8,
-            max_val=t_final / 2,
-            unit="s"
-        )}
-    t = tf.constant(
-        [2.50e-10, 7.50e-10, 1.25e-09, 1.75e-09, 2.25e-09, 2.75e-09, 3.25e-09, 3.75e-09, 4.25e-09, 4.75e-09, 5.25e-09,
-         5.75e-09, 6.25e-09, 6.75e-09], shape=(14,), dtype=tf.float64)
-
-    res = left_half_gaussian_nonorm(t, params)
-    print(res)
-
-    res_working = gaussian_nonorm(t, params)
-    print(res_working)
