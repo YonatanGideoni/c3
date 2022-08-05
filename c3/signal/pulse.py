@@ -38,7 +38,8 @@ class Envelope(C3obj):
             comment: str = " ",
             params: Dict[str, Qty] = {},
             shape: Union[Callable, str] = None,
-            normalize_pulse=False,
+            use_t_before: bool = False,
+            normalize_pulse: bool = False,
     ):
         if isinstance(shape, str):
             self.shape = envelopes[shape]
