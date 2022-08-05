@@ -3,7 +3,9 @@
 import os
 import shutil
 import tensorflow as tf
-from typing import Callable, List
+from typing import Callable, List, Union
+
+from scipy.optimize import OptimizeResult
 
 from c3.optimizers.optimizer import Optimizer
 from c3.utils.utils import log_setup
@@ -129,7 +131,7 @@ class OptimalControl(Optimizer):
         self.pmap.model.update_model()
         shutil.copy(adjust_exp, os.path.join(self.logdir, "adjust_exp.c3log"))
 
-    def optimize_controls(self, setup_log: bool = True) -> None:
+    def optimize_controls(self, setup_log: bool = True) -> Union[None, OptimizeResult]:
         """
         Apply a search algorithm to your gateset given a fidelity function.
         """
@@ -144,7 +146,7 @@ class OptimalControl(Optimizer):
         self.index = index
         x_init = self.pmap.get_parameters_scaled()
         try:
-            self.algorithm(
+            opt_res = self.algorithm(
                 x_init,
                 fun=self.fct_to_min,
                 fun_grad=self.fct_to_min_autograd,
@@ -152,9 +154,11 @@ class OptimalControl(Optimizer):
                 options=self.options,
             )
         except KeyboardInterrupt:
-            pass
+            opt_res = None
         self.load_best(self.logdir + "best_point_" + self.logname)
         self.end_log()
+
+        return opt_res
 
     @tf.function
     def goal_run(self, current_params: tf.Tensor) -> tf.float64:
