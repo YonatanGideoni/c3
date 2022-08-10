@@ -54,7 +54,7 @@ class Instruction:
         t_end: float = 0.0,
         # fixed_t_end: bool = True,
     ):
-        self.set_name(name)
+        self.set_name(name, ideal)
         self.targets = targets
         self.params: dict = {}
         if isinstance(params, dict):
