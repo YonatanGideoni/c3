@@ -153,7 +153,7 @@ class Envelope(C3obj):
         """
         mask = self.compute_mask(ts, t_final)
         env = mask * self.shape(ts, self.params)
-        area = tf.reduce_sum(env, keepdims=True) * 0.5
+        area = tf.reduce_sum(env, keepdims=True)
         return env / area
 
 
