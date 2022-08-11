@@ -538,7 +538,7 @@ def gaussian_der_nonorm(t, params):
             * (t - t_final / 2)
             / sigma ** 2
     )
-    return gauss_der
+    return tf_complexify(gauss_der)
 
 
 @env_reg_deco
