@@ -529,6 +529,19 @@ def right_half_gaussian_nonorm(t, params):
 
 
 @env_reg_deco
+def gaussian_der_mag_unity(t, params):
+    """Derivative of the normalized gaussian, with its magnitude being on order of unity (not exactly!)."""
+    t_final = tf.cast(params["t_final"].get_value(), tf.float64)
+    sigma = tf.cast(params["sigma"].get_value(), tf.float64)
+    gauss_der = (
+            tf.exp(-((t - t_final / 2) ** 2) / (2 * sigma ** 2))
+            * -(t - t_final / 2)
+            / sigma
+    )
+    return tf_complexify(gauss_der)
+
+
+@env_reg_deco
 def gaussian_der_nonorm(t, params):
     """Derivative of the normalized gaussian (ifself not normalized)."""
     t_final = tf.cast(params["t_final"].get_value(), tf.float64)
