@@ -134,7 +134,7 @@ class Envelope(C3obj):
         env = mask * shape
         if self.normalize_pulse:
             amplitude = tf.reduce_max(tf.abs(env), keepdims=True)
-            return env / amplitude
+            return env / tf_complexify(amplitude)
 
         return env
 
