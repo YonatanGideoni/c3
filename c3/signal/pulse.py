@@ -54,7 +54,7 @@ class Envelope(C3obj):
             "t_final": Qty(value=1.0, min_val=-1.0, max_val=+1.0, unit="s"),
         }
         default_params.update(params)
-        self.set_normalize_pulse(normalize_pulse)
+        self.set_pulse_getter(use_t_before, normalize_pulse)
         super().__init__(
             name=name,
             desc=desc,
@@ -90,11 +90,9 @@ class Envelope(C3obj):
         repr_str += "shape: " + self.shape.__name__ + ", "
         return repr_str
 
-    def set_normalize_pulse(self, normalize_pulse):
-        if normalize_pulse:
-            self.get_shape_values = self._get_shape_values_normalized
-        else:
-            self.get_shape_values = self._get_shape_values_just
+    def set_pulse_getter(self, use_t_before: bool, normalize_pulse: bool):
+        self.get_shape_values = lambda *args, **kwargs: self._get_shape_values(*args, get_before=use_t_before,
+                                                                               normalize=normalize_pulse, **kwargs)
 
     def compute_mask(self, ts, t_end) -> tf.Tensor:
         """Compute a mask to cut out a signal after t_final.
@@ -116,45 +114,31 @@ class Envelope(C3obj):
             * tf.sigmoid((0.999 * t_final - ts) / dt * 1e6)
         )
 
-    def _get_shape_values_before(self, ts, t_final=1):
-        """Return the value of the shape function at the specified times. With the offset, we make sure the
-        signal starts with amplitude zero by subtracting the shape value at time -dt.
-
-        Parameters
-        ----------
-        ts : tf.Tensor
-            Vector of time samples.
-        """
-        t_before = 2 * ts[0] - ts[1]  # t[0] - (t[1] - t[0])
-        offset = self.shape(t_before, self.params)
-        mask = self.compute_mask(ts, t_final)
-        return mask * (self.shape(ts, self.params) - offset)
-
-    def _get_shape_values_just(self, ts, t_final=1):
+    def _get_shape_values(self, ts, t_final=1, get_before: bool = False, normalize: bool = False) -> tf.Tensor:
         """Return the value of the shape function at the specified times.
 
         Parameters
         ----------
         ts : tf.Tensor
             Vector of time samples.
+        get_before: bool
+            Whether or not to get the shape such that the signal starts at amplitude 0. With the offset, we make
+            sure the signal starts with amplitude zero by subtracting the shape value at time -dt.
+        normalize: bool
+            Whether or not to normalize the pulse relative to the amplitude, such that the max amplitude is +-1.
         """
         mask = self.compute_mask(ts, t_final)
-        env = mask * self.shape(ts, self.params)
-        # print(env)
-        return mask * self.shape(ts, self.params)
+        shape = self.shape(ts, self.params)
+        if get_before:
+            t_before = 2 * ts[0] - ts[1]  # t[0] - (t[1] - t[0])
+            shape = shape - self.shape(t_before, self.params)
 
-    def _get_shape_values_normalized(self, ts, t_final=1):
-        """Returns the normalized form of the shape function at the specified times.
+        env = mask * shape
+        if normalize:
+            amplitude = tf.reduce_max(tf.abs(env), keepdims=True)
+            return env / amplitude
 
-        Parameters
-        ----------
-        ts : tf.Tensor
-            Vector of time samples.
-        """
-        mask = self.compute_mask(ts, t_final)
-        env = mask * self.shape(ts, self.params)
-        area = tf.reduce_sum(env, keepdims=True)
-        return env / area
+        return env
 
 
 @comp_reg_deco
@@ -178,11 +162,8 @@ class EnvelopeDrag(Envelope):
         )
         self.set_use_t_before(use_t_before)
 
-    def set_use_t_before(self, use_t_before):
-        if use_t_before:
-            self.base_env = super()._get_shape_values_before
-        else:
-            self.base_env = super()._get_shape_values_just
+    def set_use_t_before(self, use_t_before: bool):
+        self.base_env = lambda *args, **kwargs: super()._get_shape_values(*args, get_before=use_t_before, **kwargs)
 
     def get_shape_values(self, ts, t_final=1):
         dt = ts[1] - ts[0]
@@ -230,10 +211,7 @@ class EnvelopeNetZero(Envelope):
         self.set_use_t_before(use_t_before)
 
     def set_use_t_before(self, use_t_before):
-        if use_t_before:
-            self.base_env = super()._get_shape_values_before
-        else:
-            self.base_env = super()._get_shape_values_just
+        self.base_env = lambda *args, **kwargs: super()._get_shape_values(*args, get_before=use_t_before, **kwargs)
 
     def get_shape_values(self, ts):
         """Return the value of the shape function at the specified times.
