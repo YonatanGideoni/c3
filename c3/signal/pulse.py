@@ -208,12 +208,10 @@ class EnvelopeNetZero(Envelope):
             shape=shape,
             use_t_before=use_t_before,
         )
-        self.set_use_t_before(use_t_before)
+        self.base_env = self.get_shape_values  # keep the original function
+        self.get_shape_values = self._get_shape_values_net_zero
 
-    def set_use_t_before(self, use_t_before):
-        self.base_env = lambda *args, **kwargs: super()._get_shape_values(*args, get_before=use_t_before, **kwargs)
-
-    def get_shape_values(self, ts):
+    def _get_shape_values_net_zero(self, ts):
         """Return the value of the shape function at the specified times.
 
         Parameters
