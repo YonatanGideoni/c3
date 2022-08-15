@@ -182,7 +182,6 @@ class OptimalControl(Optimizer):
         goal = self.fid_func(
             propagators=propagators,
             instructions=self.pmap.instructions,
-            pmap=self.pmap,
             index=self.index,
             dims=dims,
             n_eval=self.evaluation + 1,

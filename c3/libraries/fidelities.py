@@ -792,7 +792,7 @@ def orbit_infid(
 
 
 def sparse_unitary_infid_set(
-        propagators: dict, instructions: dict, pmap, index, dims, n_eval=-1, loss_func_type: str = 'sqrt',
+        propagators: dict, instructions: dict, index, dims, n_eval=-1, loss_func_type: str = 'sqrt',
         reg_strength: float = 1e-5
 ) -> tf.float64:
     """
@@ -848,7 +848,7 @@ def sparse_unitary_infid_set(
         raise NotImplementedError(f"Haven't implemented a loss function of the type {loss_func_type} yet.")
 
     amps = []
-    for gate, instruction in pmap.instructions.items():
+    for gate, instruction in instructions.items():
         for chan, channel in instruction.comps.items():
             for com, component in channel.items():
                 if "amp" in component.params:
