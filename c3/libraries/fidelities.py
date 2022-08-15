@@ -792,7 +792,7 @@ def orbit_infid(
 
 
 def sparse_unitary_infid_set(
-        propagators: dict, instructions: dict, index, dims, n_eval=-1, loss_func_type: str = 'sqrt',
+        propagators: dict, instructions: dict, index, dims, n_eval=-1, loss_func_type: str = 'sumOverSqrtMax',
         reg_strength: float = 1e-5
 ) -> tf.float64:
     """
