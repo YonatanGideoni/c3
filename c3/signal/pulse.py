@@ -54,13 +54,15 @@ class Envelope(C3obj):
             "t_final": Qty(value=1.0, min_val=-1.0, max_val=+1.0, unit="s"),
         }
         default_params.update(params)
-        self.set_pulse_getter(use_t_before, normalize_pulse)
         super().__init__(
             name=name,
             desc=desc,
             comment=comment,
             params=default_params,
         )
+
+        self.normalize_pulse = normalize_pulse
+        self.use_t_before = use_t_before
 
     def write_config(self, filepath: str) -> None:
         """
@@ -90,10 +92,6 @@ class Envelope(C3obj):
         repr_str += "shape: " + self.shape.__name__ + ", "
         return repr_str
 
-    def set_pulse_getter(self, use_t_before: bool, normalize_pulse: bool):
-        self.get_shape_values = lambda *args, **kwargs: self._get_shape_values(*args, get_before=use_t_before,
-                                                                               normalize=normalize_pulse, **kwargs)
-
     def compute_mask(self, ts, t_end) -> tf.Tensor:
         """Compute a mask to cut out a signal after t_final.
 
@@ -114,7 +112,7 @@ class Envelope(C3obj):
             * tf.sigmoid((0.999 * t_final - ts) / dt * 1e6)
         )
 
-    def _get_shape_values(self, ts, t_final=1, get_before: bool = False, normalize: bool = False) -> tf.Tensor:
+    def get_shape_values(self, ts, t_final=1) -> tf.Tensor:
         """Return the value of the shape function at the specified times.
 
         Parameters
@@ -129,12 +127,12 @@ class Envelope(C3obj):
         """
         mask = self.compute_mask(ts, t_final)
         shape = self.shape(ts, self.params)
-        if get_before:
+        if self.use_t_before:
             t_before = 2 * ts[0] - ts[1]  # t[0] - (t[1] - t[0])
             shape = shape - self.shape(t_before, self.params)
 
         env = mask * shape
-        if normalize:
+        if self.normalize_pulse:
             amplitude = tf.reduce_max(tf.abs(env), keepdims=True)
             return env / amplitude
 
