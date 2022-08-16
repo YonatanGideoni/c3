@@ -119,11 +119,6 @@ class Envelope(C3obj):
         ----------
         ts : tf.Tensor
             Vector of time samples.
-        get_before: bool
-            Whether or not to get the shape such that the signal starts at amplitude 0. With the offset, we make
-            sure the signal starts with amplitude zero by subtracting the shape value at time -dt.
-        normalize: bool
-            Whether or not to normalize the pulse relative to the amplitude, such that the max amplitude is +-1.
         """
         mask = self.compute_mask(ts, t_final)
         shape = self.shape(ts, self.params)
@@ -133,8 +128,8 @@ class Envelope(C3obj):
 
         env = mask * shape
         if self.normalize_pulse:
-            amplitude = tf.reduce_max(tf.abs(env), keepdims=True)
-            return env / tf_complexify(amplitude)
+            area = tf.reduce_sum(env, keepdims=True)
+            return env / area
 
         return env
 
