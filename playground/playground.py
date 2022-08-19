@@ -27,13 +27,12 @@ from c3.c3objs import Quantity as Qty
 from c3.experiment import Experiment as Exp
 from c3.generator.generator import Generator as Gnr
 from c3.model import Model as Mdl
+import tensorflow as tf
 from c3.optimizers.optimalcontrol import OptimalControl
 from c3.parametermap import ParameterMap as PMap
 from c3.utils.tf_utils import tf_project_to_comp
 
 np.random.seed(0)
-
-# Qiskit related modules
 
 qubit_lvls = 3
 freq_q1 = 5e9
@@ -201,6 +200,11 @@ gauss_env = pulse.Envelope(
     shape=envelopes.gaussian_nonorm,
 )
 
+gauss2_params = copy.deepcopy(gauss_params)
+gauss2_params['amp'].set_value(0)
+gauss2_env = copy.deepcopy(gauss_env)
+gauss2_env.params = gauss2_params
+
 lo_freq_q1 = freq_q1 + sideband
 lo_freq_q2 = freq_q2 + sideband
 
@@ -257,6 +261,7 @@ cnot12.comps["d1"]["carrier"].params["framechange"].set_value(
 )
 
 cnot12.add_component(gauss_env, 'd1')
+cnot12.add_component(gauss2_env, 'd2')
 
 gate_name = cnot12.name + '[0, 1]'
 
@@ -270,32 +275,67 @@ opt_gates = [gate_name]
 
 
 def get_fid_over_time():
+    freqs = {}
+    framechanges = {}
+    for line, ctrls in cnot12.comps.items():
+        offset = tf.constant(0.0, tf.float64)
+        for ctrl in ctrls.values():
+            if "freq_offset" in ctrl.params.keys():
+                if ctrl.params["amp"] != 0.0:
+                    offset = ctrl.params["freq_offset"].get_value()
+        freqs[line] = tf.cast(
+            ctrls["carrier"].params["freq"].get_value() + offset,
+            tf.complex128,
+        )
+        framechanges[line] = tf.cast(
+            ctrls["carrier"].params["framechange"].get_value(),
+            tf.complex128,
+        )
+
+    times = exp.ts.numpy()
     partial_props = exp.partial_propagators[gate_name].numpy()
     ideal_gate = cnot12.ideal
     n = ideal_gate.shape[0]
-    U = np.eye(n)
+    U = np.eye(9)
     fid_over_t = []
     cost = 0
-    times = exp.ts.numpy()
+    dt = times[1] - times[0]
     for dU, t in zip(partial_props, times):
-        U = tf_project_to_comp(dU, dims=[3, 3]) @ U
+        U = dU @ U
+        # rot_mat = base_rot_mat @ rot_mat
 
-        w1 = 2 * np.pi * freq_q1
-        w2 = 2 * np.pi * freq_q2
-        rotated_U = U * np.array([[1], [np.exp(1j * w2 * t)], [np.exp(1j * w1 * t)], [np.exp(1j * (w1 + w2) * t)]])
+        w1 = 2 * np.pi * 4.995380e9
+        w2 = 2 * np.pi * 5.6036557e9
+        w_sum = 2 * np.pi * 1.05919032e+10
+        passive_rot = 2 * np.pi * -2.36028622e+05
+
+        rot_t = t
+        # rotated_U = U * np.array([[np.exp(1j * passive_rot * rot_t)], [np.exp(1j * w2 * rot_t)],
+        #                           [np.exp(1j * w1 * rot_t)], [np.exp(1j * w_sum * rot_t)]])
+
+        rot_mat = model.get_Frame_Rotation(rot_t, freqs, framechanges).numpy()
+        rotated_U = tf_project_to_comp(rot_mat @ U, dims=[3, 3])
+        print(U[1, 3], t)
+
         fid = abs(np.trace(scipy.linalg.fractional_matrix_power(ideal_gate.conj().T, t / t_final) @ rotated_U) / n) ** 2
 
         cost += fid * (1 - np.exp(-t / t_final))
 
         fid_over_t.append({'t': t, 'F': fid})
 
-    print(cost * (times[1] - times[0]) / t_final * np.e)
+    print(cost * dt / t_final * np.e)
+    print(1 - fidelities.unitary_infid(cnot12.ideal.astype(np.complex128), exp.propagators['cx[0, 1]'],
+                                       dims=[3, 3]).numpy()[0])
+    print(fid_over_t[-1]['F'])
+    print()
 
     return pd.DataFrame.from_records(fid_over_t)
 
-for v in np.linspace(0, 5, 25):
+
+for v in np.linspace(1, 3, 3):
     gauss_env.params['amp'].set_value(v)
 
+    print(v)
     exp.compute_propagators()
 
     fid_over_t = get_fid_over_time()
