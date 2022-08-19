@@ -29,6 +29,7 @@ from c3.generator.generator import Generator as Gnr
 from c3.model import Model as Mdl
 from c3.optimizers.optimalcontrol import OptimalControl
 from c3.parametermap import ParameterMap as PMap
+from c3.utils.tf_utils import tf_project_to_comp
 
 np.random.seed(0)
 
@@ -36,7 +37,7 @@ np.random.seed(0)
 
 qubit_lvls = 3
 freq_q1 = 5e9
-anhar_q1 = -100e6
+anhar_q1 = -210e6
 t1_q1 = 27e-6
 t2star_q1 = 39e-6
 qubit_temp = 50e-3
@@ -52,22 +53,79 @@ q1 = chip.Qubit(
     temp=Qty(value=qubit_temp, min_val=0.0, max_val=0.12, unit="K"),
 )
 
+freq_q2 = 5.6e9
+anhar_q2 = -240e6
+t1_q2 = 23e-6
+t2star_q2 = 31e-6
+q2 = chip.Qubit(
+    name="Q2",
+    desc="Qubit 2",
+    freq=Qty(
+        value=freq_q2,
+        min_val=5.595e9,
+        max_val=5.605e9,
+        unit='Hz 2pi'
+    ),
+    anhar=Qty(
+        value=anhar_q2,
+        min_val=-380e6,
+        max_val=-120e6,
+        unit='Hz 2pi'
+    ),
+    hilbert_dim=qubit_lvls,
+    t1=Qty(
+        value=t1_q2,
+        min_val=1e-6,
+        max_val=90e-6,
+        unit='s'
+    ),
+    t2star=Qty(
+        value=t2star_q2,
+        min_val=10e-6,
+        max_val=90e-6,
+        unit='s'
+    ),
+    temp=Qty(
+        value=qubit_temp,
+        min_val=0.0,
+        max_val=0.12,
+        unit='K'
+    )
+)
+
+coupling_strength = 50e6
+q1q2 = chip.Coupling(
+    name="Q1-Q2",
+    desc="coupling",
+    comment="Coupling qubit 1 to qubit 2",
+    connected=["Q1", "Q2"],
+    strength=Qty(
+        value=coupling_strength,
+        min_val=-1 * 1e3,
+        max_val=200e6,
+        unit='Hz 2pi'
+    ),
+    hamiltonian_func=hamiltonians.int_XX
+)
+
 drive = chip.Drive(
     name="d1",
     desc="Drive 1",
     comment="Drive line 1 on qubit 1",
     connected=["Q1"],
-    hamiltonian_func=hamiltonians.x_drive,
+    hamiltonian_func=hamiltonians.x_drive
 )
-
-init_temp = 50e-3
-init_ground = tasks.InitialiseGround(
-    init_temp=Qty(value=init_temp, min_val=-0.001, max_val=0.22, unit="K")
+drive2 = chip.Drive(
+    name="d2",
+    desc="Drive 2",
+    comment="Drive line 2 on qubit 2",
+    connected=["Q2"],
+    hamiltonian_func=hamiltonians.x_drive
 )
 
 model = Mdl(
-    [q1],  # Individual, self-contained components
-    [drive],  # Interactions between components
+    [q1, q2],  # Individual, self-contained components
+    [drive, drive2, q1q2],  # Interactions between components
 )
 
 model.set_lindbladian(False)
@@ -118,12 +176,13 @@ generator = Gnr(
     },
 )
 
-t_final = 7e-9  # Time for single qubit gates
+# t_final = 7e-9  # Time for single qubit gates
+t_final = 45e-9  # Time for two qubit gates
 sideband = 50e6
 
 # gaussiam params
 gauss_params = {
-    "amp": Qty(value=0.36, min_val=0.0, max_val=2.5, unit="V"),
+    "amp": Qty(value=0.36, min_val=0.0, max_val=5, unit="V"),
     "t_final": Qty(
         value=t_final, min_val=0.5 * t_final, max_val=1.5 * t_final, unit="s"
     ),
@@ -142,45 +201,88 @@ gauss_env = pulse.Envelope(
     shape=envelopes.gaussian_nonorm,
 )
 
-lo_freq_q1 = 5e9 + sideband
-carrier_parameters = {
-    "freq": Qty(value=lo_freq_q1, min_val=4.5e9, max_val=6e9, unit="Hz 2pi"),
-    "framechange": Qty(value=0.0, min_val=-np.pi, max_val=3 * np.pi, unit="rad"),
-}
-carr = pulse.Carrier(
-    name="carrier", desc="Frequency of the local oscillator", params=carrier_parameters
+lo_freq_q1 = freq_q1 + sideband
+lo_freq_q2 = freq_q2 + sideband
+
+carr_2Q_1 = pulse.Carrier(
+    name="carrier",
+    desc="Carrier on drive 1",
+    params={
+        'freq': Qty(value=lo_freq_q2, min_val=0.9 * lo_freq_q2, max_val=1.1 * lo_freq_q2, unit='Hz 2pi'),
+        'framechange': Qty(value=0.0, min_val=-np.pi, max_val=3 * np.pi, unit='rad')
+    }
 )
 
-rx90p_q1 = gates.Instruction(
-    name="rx90p", targets=[0], t_start=0.0, t_end=t_final, channels=["d1"]
+carr_2Q_2 = pulse.Carrier(
+    name="carrier",
+    desc="Carrier on drive 2",
+    params={
+        'freq': Qty(value=lo_freq_q2, min_val=0.9 * lo_freq_q2, max_val=1.1 * lo_freq_q2, unit='Hz 2pi'),
+        'framechange': Qty(value=0.0, min_val=-np.pi, max_val=3 * np.pi, unit='rad')
+    }
 )
 
-rx90p_q1.add_component(carr, "d1")
-rx90p_q1.add_component(gauss_env, "d1")
+# lo_freq_q1 = 5e9 + sideband
+# carrier_parameters = {
+#     "freq": Qty(value=lo_freq_q1, min_val=4.5e9, max_val=6e9, unit="Hz 2pi"),
+#     "framechange": Qty(value=0.0, min_val=-np.pi, max_val=3 * np.pi, unit="rad"),
+# }
+# carr = pulse.Carrier(
+#     name="carrier", desc="Frequency of the local oscillator", params=carrier_parameters
+# )
+#
+# rx90p_q1 = gates.Instruction(
+#     name="rx90p", targets=[0], t_start=0.0, t_end=t_final, channels=["d1"]
+# )
+#
+# rx90p_q1.add_component(carr, "d1")
+# rx90p_q1.add_component(gauss_env, "d1")
+#
+# single_q_gates = [rx90p_q1]
+# CNOT comtrolled by qubit 1
+cnot12 = gates.Instruction(
+    name="cx", targets=[0, 1], t_start=0.0, t_end=t_final, channels=["d1", "d2"],
+    ideal=np.array([
+        [1, 0, 0, 0],
+        [0, 1, 0, 0],
+        [0, 0, 0, 1],
+        [0, 0, 1, 0]
+    ])
+)
 
-single_q_gates = [rx90p_q1]
+cnot12.add_component(carr_2Q_1, "d1")
+cnot12.add_component(carr_2Q_2, "d2")
+cnot12.comps["d1"]["carrier"].params["framechange"].set_value(
+    (-sideband * t_final) * 2 * np.pi % (2 * np.pi)
+)
 
-parameter_map = PMap(instructions=single_q_gates, model=model, generator=generator)
+cnot12.add_component(gauss_env, 'd1')
+
+gate_name = cnot12.name + '[0, 1]'
+
+parameter_map = PMap(instructions=[cnot12], model=model, generator=generator)
 exp = Exp(pmap=parameter_map)
-exp.set_opt_gates(["rx90p[0]"])
+exp.set_opt_gates([gate_name])
 unitaries = exp.compute_propagators()
-gate_seq = ["rx90p[0]"]
+gate_seq = [gate_name]
 
-opt_gates = ["rx90p[0]"]
+opt_gates = [gate_name]
 
 
 def get_fid_over_time():
-    partial_props = exp.partial_propagators['rx90p[0]'].numpy()
-    ideal_gate = rx90p_q1.ideal
+    partial_props = exp.partial_propagators[gate_name].numpy()
+    ideal_gate = cnot12.ideal
     n = ideal_gate.shape[0]
     U = np.eye(n)
     fid_over_t = []
     cost = 0
     times = exp.ts.numpy()
     for dU, t in zip(partial_props, times):
-        U = dU[:2, :2] @ U
+        U = tf_project_to_comp(dU, dims=[3, 3]) @ U
 
-        rotated_U = U * np.array([[1], [np.exp(1j * 2 * np.pi * freq_q1 * t)]])
+        w1 = 2 * np.pi * freq_q1
+        w2 = 2 * np.pi * freq_q2
+        rotated_U = U * np.array([[1], [np.exp(1j * w2 * t)], [np.exp(1j * w1 * t)], [np.exp(1j * (w1 + w2) * t)]])
         fid = abs(np.trace(scipy.linalg.fractional_matrix_power(ideal_gate.conj().T, t / t_final) @ rotated_U) / n) ** 2
 
         cost += fid * (1 - np.exp(-t / t_final))
@@ -191,8 +293,7 @@ def get_fid_over_time():
 
     return pd.DataFrame.from_records(fid_over_t)
 
-
-for v in np.linspace(0, 2.5, 30):
+for v in np.linspace(0, 5, 25):
     gauss_env.params['amp'].set_value(v)
 
     exp.compute_propagators()
