@@ -538,10 +538,10 @@ class Model:
                 np.matmul(ann_oper.T.conj(), ann_oper), dtype=tf.complex128
             )
             # TODO test dressing of FR
-            exponent = exponent + 1.0j * tf.expand_dims(num_oper, 2) * tf.expand_dims(freq * t_final + framechange, 0)
+            exponent = exponent + 1.0j * num_oper * (freq * t_final + framechange)
         if len(exponent.shape) == 0:
             return tf.eye(self.tot_dim, dtype=tf.complex128)
-        FR = tf.linalg.expm(tf.transpose(exponent, [2,0,1]))
+        FR = tf.linalg.expm(exponent)
         return FR
 
     def get_qubit_freqs(self) -> List[float]:
