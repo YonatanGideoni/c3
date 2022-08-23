@@ -274,25 +274,6 @@ gate_name = gate.name + '[0]'
 
 parameter_map = PMap(instructions=[gate], model=model, generator=generator)
 exp = Exp(pmap=parameter_map)
-exp.set_opt_gates([gate_name])
-unitaries = exp.compute_propagators()
-gate_seq = [gate_name]
-
-opt_gates = [gate_name]
-
-gateset_opt_map = [
-    [
-        ("rx90p[0]", "d1", "carrier", "framechange"),
-    ],
-    [
-        ("rx90p[0]", "d1", "gauss", "amp"),
-    ],
-    [
-        ("rx90p[0]", "d1", "gauss", "freq_offset"),
-    ],
-]
-
-parameter_map.set_opt_map(gateset_opt_map)
 
 
 def get_fid_func(mu: float, F_bar: float):
@@ -316,8 +297,35 @@ def run_log_barrier_opt_iter(exp_opt: OptimalControl, mu: float, F_bar: float):
     exp_opt.optimize_controls()
 
 
-def signal_opt_via_log_barrier(exp: Exp, alpha: float = 2, init_F_bar_mul: float = 0.9, init_mu: float = 1e-10,
-                               verbose: bool = True):
+def set_amps_to_zero(exp: Exp):
+    for instruction in exp.pmap.instructions.values():
+        for channel in instruction.comps.values():
+            for component in channel.values():
+                if "amp" in component.params:
+                    component.params['amp'].set_value(0)
+
+
+def setup_experiment_opt_ctrl(exp: Exp, maxiter: int = 20) -> OptimalControl:
+    log_dir = os.path.join(tempfile.TemporaryDirectory().name, "c3logs")
+
+    opt = OptimalControl(
+        dir_path=log_dir,
+        fid_func=None,
+        fid_subspace=["Q1"],  # TODO-set this automatically
+        pmap=exp.pmap,
+        algorithm=algorithms.lbfgs,
+        options={'maxiter': maxiter},
+    )
+
+    return opt
+
+
+def calc_exp_fid(exp: Exp, index: list, dims: list) -> float:
+    return fidelities.unitary_infid_set(exp.propagators, exp.pmap.instructions, index, dims)
+
+
+def signal_opt_via_log_barrier(exp: Exp, opt_q_inds: list, opt_q_dims: list, alpha: float = 2,
+                               init_F_bar_mul: float = 0.9, init_mu: float = 1e-10, verbose: bool = True):
     assert 1 < alpha, 'Error: alpha is OOB!'
     assert exp.opt_gates is not None, 'Error: experiment needs to have opt gates set!'
     assert exp.pmap.opt_map, 'Error: PMAP needs to have opt map set!'
@@ -326,7 +334,8 @@ def signal_opt_via_log_barrier(exp: Exp, alpha: float = 2, init_F_bar_mul: float
 
     exp_opt = setup_experiment_opt_ctrl(exp)
 
-    init_fid = calc_exp_fid(exp)
+    exp.compute_propagators()
+    init_fid = calc_exp_fid(exp, opt_q_inds, opt_q_dims)
     F_bar = init_fid * init_F_bar_mul
     mu = init_mu
 
@@ -335,7 +344,7 @@ def signal_opt_via_log_barrier(exp: Exp, alpha: float = 2, init_F_bar_mul: float
     while True:
         run_log_barrier_opt_iter(exp_opt, mu, F_bar)
 
-        fid = calc_exp_fid(exp)
+        fid = calc_exp_fid(exp, opt_q_inds, opt_q_dims)
 
         if verbose:
             print(f'Fidelity: {fid:.3f}')
@@ -343,28 +352,31 @@ def signal_opt_via_log_barrier(exp: Exp, alpha: float = 2, init_F_bar_mul: float
             print(f'mu:       {mu:.2e}')
             exp.pmap.print_parameters()
 
-        if fid > fids[-1]:
-            F_bar = 0.5 * (fid + fids[-1])
+        prev_fid = fids[-1]
+        if fid > prev_fid:
+            F_bar = 0.5 * (fid + prev_fid)
         else:
             mu *= alpha
         fids.append(fid)
 
 
-# Create a temporary directory to store logfiles, modify as needed
-log_dir = os.path.join(tempfile.TemporaryDirectory().name, "c3logs")
+exp.set_opt_gates([gate_name])
+gate_seq = [gate_name]
 
-opt = OptimalControl(
-    dir_path=log_dir,
-    fid_func=fidelities.sparse_unitary_infid_set,
-    fid_subspace=["Q1"],
-    pmap=exp.pmap,
-    algorithm=algorithms.lbfgs,
-    options={'maxfun': 50},
-    run_name="temp",
-)
+opt_gates = [gate_name]
 
-exp.set_opt_gates(opt_gates)
-opt.set_exp(exp)
-opt_res = opt.optimize_controls()
+gateset_opt_map = [
+    [
+        ("rx90p[0]", "d1", "carrier", "framechange"),
+    ],
+    [
+        ("rx90p[0]", "d1", "gauss", "amp"),
+    ],
+    [
+        ("rx90p[0]", "d1", "gauss", "freq_offset"),
+    ],
+]
 
-parameter_map.print_parameters()
+parameter_map.set_opt_map(gateset_opt_map)
+
+signal_opt_via_log_barrier(exp, opt_q_inds=[0], opt_q_dims=[3])
