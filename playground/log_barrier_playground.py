@@ -278,7 +278,7 @@ exp = Exp(pmap=parameter_map)
 
 def get_fid_func(mu: float, F_bar: float):
     def fid_func(*args, **kwargs):
-        avg_fid = fidelities.unitary_infid_set(*args, **kwargs)
+        avg_fid = 1 - fidelities.unitary_infid_set(*args, **kwargs)
 
         reg_term = fidelities.amplitude_regularization_cost(*args, loss_func_type='sqrt', **kwargs)
 
@@ -305,7 +305,7 @@ def set_amps_to_zero(exp: Exp):
                     component.params['amp'].set_value(0)
 
 
-def setup_experiment_opt_ctrl(exp: Exp, maxiter: int = 20) -> OptimalControl:
+def setup_experiment_opt_ctrl(exp: Exp, maxiter: int = 50) -> OptimalControl:
     log_dir = os.path.join(tempfile.TemporaryDirectory().name, "c3logs")
 
     opt = OptimalControl(
@@ -317,22 +317,22 @@ def setup_experiment_opt_ctrl(exp: Exp, maxiter: int = 20) -> OptimalControl:
         options={'maxiter': maxiter},
     )
 
+    opt.set_exp(exp)
+
     return opt
 
 
 def calc_exp_fid(exp: Exp, index: list, dims: list) -> float:
-    return fidelities.unitary_infid_set(exp.propagators, exp.pmap.instructions, index, dims)
+    return 1 - fidelities.unitary_infid_set(exp.propagators, exp.pmap.instructions, index, dims)
 
 
 def signal_opt_via_log_barrier(exp: Exp, opt_q_inds: list, opt_q_dims: list, alpha: float = 2,
-                               init_F_bar_mul: float = 0.9, init_mu: float = 1e-10, verbose: bool = True):
+                               init_F_bar_mul: float = 0.9, init_mu: float = 1e-6, verbose: bool = True):
     assert 1 < alpha, 'Error: alpha is OOB!'
     assert exp.opt_gates is not None, 'Error: experiment needs to have opt gates set!'
     assert exp.pmap.opt_map, 'Error: PMAP needs to have opt map set!'
 
     set_amps_to_zero(exp)
-
-    exp_opt = setup_experiment_opt_ctrl(exp)
 
     exp.compute_propagators()
     init_fid = calc_exp_fid(exp, opt_q_inds, opt_q_dims)
@@ -340,10 +340,12 @@ def signal_opt_via_log_barrier(exp: Exp, opt_q_inds: list, opt_q_dims: list, alp
     mu = init_mu
 
     fids = [init_fid]
-    # TODO - find good exit conditions
-    while True:
+    # TODO - find better exit conditions
+    while (prev_fid := fids[-1]) < 0.999:
+        exp_opt = setup_experiment_opt_ctrl(exp)
         run_log_barrier_opt_iter(exp_opt, mu, F_bar)
 
+        exp.compute_propagators()
         fid = calc_exp_fid(exp, opt_q_inds, opt_q_dims)
 
         if verbose:
@@ -352,11 +354,9 @@ def signal_opt_via_log_barrier(exp: Exp, opt_q_inds: list, opt_q_dims: list, alp
             print(f'mu:       {mu:.2e}')
             exp.pmap.print_parameters()
 
-        prev_fid = fids[-1]
-        if fid > prev_fid:
-            F_bar = 0.5 * (fid + prev_fid)
-        else:
-            mu *= alpha
+        mu *= alpha
+        if fid >= prev_fid:
+            F_bar = 0.5 * (fid + min(prev_fid, F_bar))
         fids.append(fid)
 
 
@@ -380,3 +380,62 @@ gateset_opt_map = [
 parameter_map.set_opt_map(gateset_opt_map)
 
 signal_opt_via_log_barrier(exp, opt_q_inds=[0], opt_q_dims=[3])
+
+
+def plot_dynamics(exp, psi_init, seq, goal=-1):
+    """
+    Plotting code for time-resolved populations.
+
+    Parameters
+    ----------
+    psi_init: tf.Tensor
+        Initial state or density matrix.
+    seq: list
+        List of operations to apply to the initial state.
+    goal: tf.float64
+        Value of the goal function, if used.
+    debug: boolean
+        If true, return a matplotlib figure instead of saving.
+    """
+    model = exp.pmap.model
+    exp.compute_propagators()
+    dUs = exp.partial_propagators
+    psi_t = psi_init.numpy()
+    pop_t = exp.populations(psi_t, model.lindbladian)
+    for gate in seq:
+        for du in dUs[gate]:
+            psi_t = np.matmul(du.numpy(), psi_t)
+            pops = exp.populations(psi_t, model.lindbladian)
+            pop_t = np.append(pop_t, pops, axis=1)
+
+    fig, axs = plt.subplots(1, 1)
+    ts = exp.ts
+    dt = ts[1] - ts[0]
+    ts = np.linspace(0.0, dt * pop_t.shape[1], pop_t.shape[1]) / 1e-9
+    axs.plot(ts, pop_t.T)
+    axs.grid(linestyle="--")
+    axs.tick_params(
+        direction="in", left=True, right=True, top=True, bottom=True
+    )
+    axs.set_xlabel('Time [ns]')
+    axs.set_ylabel('Population')
+
+    for state_pop in pops:
+        state_pop = state_pop.numpy()[0]
+        axs.annotate(f'{state_pop * 100:.0f}%', (ts.max(), state_pop))
+
+    plt.legend(model.state_labels)
+    plt.xlim(0, ts.max() * 1.1)
+
+
+psi_init = [[0] * qubit_lvls]
+psi_init[0][1] = 1
+init_state = tf.transpose(tf.constant(psi_init, tf.complex128))
+plot_dynamics(exp, init_state, [gate_name])
+
+psi_init[0][1] = 0
+psi_init[0][0] = 1
+init_state = tf.transpose(tf.constant(psi_init, tf.complex128))
+plot_dynamics(exp, init_state, [gate_name])
+
+plt.show()
