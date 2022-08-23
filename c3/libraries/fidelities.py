@@ -791,6 +791,37 @@ def orbit_infid(
     return tf_ave(infids)
 
 
+def amplitude_regularization_cost(propagators: dict, instructions: dict, index, dims, n_eval=-1,
+                                  loss_func_type: str = 'sumOverSqrtMax', reg_strength: float = 1e-5):
+    """Regularization term for sparse_unitary_infid_set - makes it be expensive to have relatively
+    large amplitudes to induce sparseness."""
+    if loss_func_type == 'sqrt':
+        loss_func = lambda amp: tf.math.sqrt(tf.math.abs(amp))
+        reduction = lambda amps: tf.math.reduce_mean(amps)
+    elif loss_func_type == 'log':
+        loss_func = lambda amp: -tf.math.log(tf.math.abs(amp))
+        reduction = lambda amps: tf.math.reduce_mean(amps)
+    elif loss_func_type == 'logSumExp':
+        loss_func = lambda amp: amp
+        reduction = lambda amps: -tf.math.reduce_logsumexp(amps)
+    elif loss_func_type == 'sumOverSqrtMax':
+        loss_func = lambda amp: amp
+        reduction = lambda amps: tf.math.reduce_sum(tf.math.abs(amps)) / \
+                                 tf.math.sqrt(tf.math.reduce_max(tf.math.abs(amps)))
+    else:
+        raise NotImplementedError(f"Haven't implemented a loss function of the type {loss_func_type} yet.")
+
+    amps = []
+    for gate, instruction in instructions.items():
+        for chan, channel in instruction.comps.items():
+            for com, component in channel.items():
+                if "amp" in component.params:
+                    amps.append(loss_func(component.params["amp"].get_value()))
+    reg_cost = reduction(amps)
+
+    return reg_cost * reg_strength
+
+
 def sparse_unitary_infid_set(
         propagators: dict, instructions: dict, index, dims, n_eval=-1, loss_func_type: str = 'sumOverSqrtMax',
         reg_strength: float = 1e-5
@@ -822,37 +853,9 @@ def sparse_unitary_infid_set(
     tf.float
         Unitary fidelity.
     """
-    # fidelity term
-    infid_cost = 0
-    for gate, propagator in propagators.items():
-        perfect_gate = instructions[gate].get_ideal_gate(dims, index)
-        infid_cost += unitary_infid(perfect_gate, propagator, index, dims)
+    avg_infid_cost = unitary_infid_set(propagators, instructions, index, dims)
 
-    avg_infid_cost = infid_cost / len(propagators)
+    reg_cost = amplitude_regularization_cost(propagators, instructions, index, dims, n_eval, loss_func_type,
+                                             reg_strength)
 
-    # regularization term
-    if loss_func_type == 'sqrt':
-        loss_func = lambda amp: tf.math.sqrt(tf.math.abs(amp))
-        reduction = lambda amps: tf.math.reduce_mean(amps)
-    elif loss_func_type == 'log':
-        loss_func = lambda amp: -tf.math.log(tf.math.abs(amp))
-        reduction = lambda amps: tf.math.reduce_mean(amps)
-    elif loss_func_type == 'logSumExp':
-        loss_func = lambda amp: amp
-        reduction = lambda amps: -tf.math.reduce_logsumexp(amps)
-    elif loss_func_type == 'sumOverSqrtMax':
-        loss_func = lambda amp: amp
-        reduction = lambda amps: tf.math.reduce_sum(tf.math.abs(amps)) / \
-                                 tf.math.sqrt(tf.math.reduce_max(tf.math.abs(amps)))
-    else:
-        raise NotImplementedError(f"Haven't implemented a loss function of the type {loss_func_type} yet.")
-
-    amps = []
-    for gate, instruction in instructions.items():
-        for chan, channel in instruction.comps.items():
-            for com, component in channel.items():
-                if "amp" in component.params:
-                    amps.append(loss_func(component.params["amp"].get_value()))
-    reg_cost = reduction(amps)
-
-    return avg_infid_cost + reg_strength * reg_cost
+    return avg_infid_cost + reg_cost
