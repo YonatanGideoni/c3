@@ -812,9 +812,9 @@ def amplitude_regularization_cost(propagators: dict, instructions: dict, index, 
         raise NotImplementedError(f"Haven't implemented a loss function of the type {loss_func_type} yet.")
 
     amps = []
-    for gate, instruction in instructions.items():
-        for chan, channel in instruction.comps.items():
-            for com, component in channel.items():
+    for instruction in instructions.values():
+        for channel in instruction.comps.values():
+            for component in channel.values():
                 if "amp" in component.params:
                     amps.append(loss_func(component.params["amp"].get_value()))
     reg_cost = reduction(amps)
