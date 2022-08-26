@@ -56,7 +56,7 @@ def plot_signal(awg: AWG, drivers_signals: dict, t_final: float,
 
     for driver, envs in drivers_signals.items():
         driver_ind = int(driver[1:]) - 1
-        for env in envs:
+        for env in envs.values():
             # de-normalize the amplitude so it has units of volts
             ts = awg.create_ts(0, t_final)
             env.normalize_pulse = False
@@ -167,3 +167,8 @@ def plot_splitted_population(
 
     plt.tight_layout()
     plt.show()
+
+
+def wait_for_not_mouse_press():
+    while not plt.waitforbuttonpress():
+        pass
