@@ -2,6 +2,8 @@ import os
 import tempfile
 from typing import Callable
 
+import matplotlib.pyplot as plt
+
 from c3.experiment import Experiment
 import c3.libraries.algorithms as algorithms
 import c3.libraries.fidelities as fidelities
@@ -9,7 +11,7 @@ from c3.optimizers.optimalcontrol import OptimalControl
 from playground.plot_utils import wait_for_not_mouse_press, plot_signal
 
 
-def setup_experiment_opt_ctrl(exp: Experiment, fid_func: Callable, maxiter: int = 5) -> OptimalControl:
+def setup_experiment_opt_ctrl(exp: Experiment, fid_func: Callable, maxiter: int = 15) -> OptimalControl:
     log_dir = os.path.join(tempfile.TemporaryDirectory().name, "c3logs")
 
     opt = OptimalControl(
@@ -115,7 +117,14 @@ GATESET_OPT_MAP = [['cnot[0, 1]-d1-carrier-framechange'],
                    ['cnot[0, 1]-d2-gauss9-amp'],
                    ['cnot[0, 1]-d2-gauss9-xy_angle']]
 if __name__ == '__main__':
-    cfg_path = 'two_qubits_entanglement_gauss_raw_var_sigma.hjson'
+    # cfg_path = 'two_qubits_entanglement_gauss_raw_var_sigma.hjson'
+
+    INIT_REG_STRENGTH = 3.36e-03
+    reg_fctr = 1.1
+    reg_strength = INIT_REG_STRENGTH
+    cfg_path = f'gauss_sol_relaxation_reg_{reg_strength:.2e}.hjson'
+    reg_strength *= reg_fctr
+
     exp = Experiment()
     exp.read_config(filepath=cfg_path)
     exp.pmap.set_opt_map(GATESET_OPT_MAP)
@@ -125,8 +134,10 @@ if __name__ == '__main__':
     drivers_signals = {driver: {sig_name: sig for sig_name, sig in signals.items() if 'carrier' not in sig_name}
                        for driver, signals in drivers_signals.items()}
 
-    reg_strength = 1e-10
-    reg_fctr = 2
+    exp.compute_propagators()
+    fid = calc_exp_fid(exp, [0, 1])
+    print(f'Init. fidelity:{fid:.3f}')
+
     while True:
         fid_func = lambda *args, **kwargs: fidelities.sparse_unitary_infid_set(*args,
                                                                                reg_strength=reg_strength,
@@ -143,5 +154,8 @@ if __name__ == '__main__':
 
         plot_signal(awg, drivers_signals, t_final=45e-9)
         wait_for_not_mouse_press()
+        plt.close('all')
 
         reg_strength *= reg_fctr
+
+        exp.write_config(f'gauss_sol_relaxation_reg_{reg_strength:.2e}.hjson')
