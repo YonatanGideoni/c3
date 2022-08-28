@@ -1,4 +1,5 @@
 import itertools
+from time import time
 from typing import List
 
 import tensorflow as tf
@@ -169,6 +170,8 @@ def plot_splitted_population(
     plt.show()
 
 
-def wait_for_not_mouse_press():
-    while not plt.waitforbuttonpress():
-        pass
+def wait_for_not_mouse_press(timeout: float = 30.):
+    start_time = time()
+    while not plt.waitforbuttonpress(timeout=1.):
+        if time() - start_time > timeout:
+            break
