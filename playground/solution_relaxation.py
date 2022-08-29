@@ -156,6 +156,6 @@ if __name__ == '__main__':
         wait_for_not_mouse_press()
         plt.close('all')
 
-        reg_strength *= reg_fctr
-
         exp.write_config(f'gauss_sol_relaxation_reg_{reg_strength:.2e}.hjson')
+
+        reg_strength *= reg_fctr
