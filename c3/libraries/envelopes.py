@@ -242,7 +242,7 @@ def flattop_risefall(t, params):
     t_final = tf.cast(params["t_final"].get_value(), tf.float64)
     t_up = risefall
     t_down = t_final - risefall
-    return (
+    return tf_complexify(
             (1 + tf.math.erf((t - t_up) / risefall))
             / 2
             * (1 + tf.math.erf((-t + t_down) / risefall))
