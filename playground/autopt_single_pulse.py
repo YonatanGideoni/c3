@@ -19,6 +19,12 @@ from c3.signal.gates import Instruction
 from c3.signal.pulse import Envelope
 from playground.plot_utils import wait_for_not_mouse_press
 
+__shared_params = {'amp', 'xy_angle', 'freq_offset', 't_final'}
+ENVELOPES_OPT_PARAMS = {'gaussian_nonorm': {'sigma'}}
+for env_params in ENVELOPES_OPT_PARAMS.values():
+    for shared_param in __shared_params:
+        env_params.add(shared_param)
+
 
 def setup_experiment_opt_ctrl(exp: Experiment, maxiter: int = 50) -> OptimalControl:
     log_dir = os.path.join(tempfile.TemporaryDirectory().name, "c3logs")
@@ -196,6 +202,10 @@ def plot_splitted_population(exp: Experiment, psi_init: tf.Tensor, sequence: Lis
     plt.show()
 
 
+def get_params_dict(opt_params: set, t_final: float) -> dict:
+    pass
+
+
 # assumes that the experiment comes with the various devices set up. TODO - make a function that does this
 def find_opt_env_for_gate(exp: Experiment, gate: Instruction, plot: bool = False):
     # plan:
@@ -205,18 +215,20 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, plot: bool = False
     # specifically for the amplitude - always initialize to zero and start with very high amplitude,
     #   then successively lower based on previous optimization's result as much as possible until the fidelity is
     #   really bad. Cache good solutions
-    drivers =?
     best_fid_per_env = {}
     best_params_per_env = {}
     gate_name = gate.get_key()
-    for env_name, env_to_opt_params in envelopes_opt_params.items():
+    drivers = set(exp.pmap.instructions[gate_name].comps.keys())
+    n_qubits = len(drivers)
+    t_final = gate.t_end
+    for env_name, env_to_opt_params in ENVELOPES_OPT_PARAMS.items():
         envelope_func = envelopes[env_name]
         for driver in drivers:
-            params =?
+            params = get_params_dict(env_to_opt_params, t_final)
             env = Envelope(name=env_name, normalize_pulse=True, params=params, shape=envelope_func)
 
             single_env_gate = deepcopy(gate)
-            single_env_gate.add_component(env, f'd{driver}')
+            single_env_gate.add_component(env, driver)
             exp.pmap.instructions = {gate_name: single_env_gate}
 
             opt_params = get_opt_params_conf(driver, env_to_opt_params)
@@ -230,7 +242,7 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, plot: bool = False
 
             if plot:
                 # TODO - add more plotting functionality
-                psi_init = get_init_state([0] * len(driver), exp)
+                psi_init = get_init_state([0] * n_qubits, exp)
                 plot_dynamics(exp, psi_init, [gate_name])
 
                 wait_for_not_mouse_press()
