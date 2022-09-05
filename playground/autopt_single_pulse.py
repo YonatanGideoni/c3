@@ -225,6 +225,10 @@ def get_params_dict(opt_params: set, t_final: float) -> dict:
     return params
 
 
+def get_opt_params_conf(driver: str, gate_key: str, env_name, env_to_opt_params: set) -> list:
+    return [[(gate_key, driver, env_name, param), ] for param in env_to_opt_params]
+
+
 # assumes that the experiment comes with the various devices set up. TODO - make a function that does this
 def find_opt_env_for_gate(exp: Experiment, gate: Instruction, plot: bool = False):
     # plan:
@@ -250,7 +254,7 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, plot: bool = False
             single_env_gate.add_component(env, driver)
             exp.pmap.instructions = {gate_name: single_env_gate}
 
-            opt_params = get_opt_params_conf(driver, env_to_opt_params)
+            opt_params = get_opt_params_conf(driver, gate_name, env_name, env_to_opt_params)
             exp.pmap.set_opt_map(opt_params)
             exp.pmap.update_parameters()
 
