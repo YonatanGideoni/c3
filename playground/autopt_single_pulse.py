@@ -261,7 +261,7 @@ def opt_single_sig_exp(exp: Experiment) -> tuple:
 
 def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, driver: str = None, env_name: str = None,
                                    gate_name: str = None, debug: bool = False, MIN_AMP: float = 0.5,
-                                   AMP_RED_FCTR: float = 0.5) -> tuple:
+                                   AMP_RED_FCTR: float = 0.5, MIN_PLOT_FID: float = 0.9) -> tuple:
     best_overall_fid = 0
     best_overall_params = None
     while (max_amp := amp.get_limits()[1]) > MIN_AMP:
@@ -277,14 +277,15 @@ def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, driver: str =
             print(f'Fidelity: {best_fid:.3f}')
             print(f'Max amp.: {max_amp:.1f}')
 
-            # TODO - add more plotting functionality
-            psi_init = get_init_state(exp)
-            plot_dynamics(exp, psi_init, [gate_name])
-            plt.title(f'{driver}-{env_name}, F={best_fid:.3f}')
+            if best_fid > MIN_PLOT_FID:
+                # TODO - add more plotting functionality
+                psi_init = get_init_state(exp)
+                plot_dynamics(exp, psi_init, [gate_name])
+                plt.title(f'{driver}-{env_name}, F={best_fid:.3f}')
 
-            wait_for_not_mouse_press()
+                wait_for_not_mouse_press()
 
-            plt.clf()
+                plt.clf()
 
         amp._set_limits(0, max_amp * AMP_RED_FCTR)
         amp.set_value(1e-5)
