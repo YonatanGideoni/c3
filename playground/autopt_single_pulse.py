@@ -26,7 +26,7 @@ from playground.plot_utils import wait_for_not_mouse_press
 
 SIDEBAND = 50e6
 
-__shared_params = {'amp', 'xy_angle', 'freq_offset', 't_final'}
+__shared_params = {'amp', 'xy_angle', 'freq_offset', 't_final', 'delta'}
 ENVELOPES_OPT_PARAMS = {'gaussian_nonorm': {'sigma'}, 'hann': set(), 'blackman_window': set(),
                         'flattop_risefall': {'risefall'}}
 for env_params in ENVELOPES_OPT_PARAMS.values():
@@ -34,7 +34,7 @@ for env_params in ENVELOPES_OPT_PARAMS.values():
         env_params.add(shared_param)
 
 
-def setup_experiment_opt_ctrl(exp: Experiment, maxiter: int = 50) -> OptimalControl:
+def setup_experiment_opt_ctrl(exp: Experiment, maxiter: int = 100) -> OptimalControl:
     # TODO - better set this
     n_qubits = len(exp.pmap.model.dims)
     fid_subspace = [f'Q{i + 1}' for i in range(n_qubits)]
@@ -215,7 +215,7 @@ def plot_splitted_population(exp: Experiment, psi_init: tf.Tensor, sequence: Lis
 
 def get_params_dict(opt_params: set, t_final: float) -> dict:
     def_params = {
-        'amp': Quantity(value=1e-5, min_val=0.0, max_val=100.0, unit="V"),
+        'amp': Quantity(value=1e-5, min_val=0.0, max_val=500., unit="V"),
         't_final': Quantity(value=t_final, min_val=0.0 * t_final, max_val=2.5 * t_final, unit="s"),
         'xy_angle': Quantity(value=0.0, min_val=-0.5 * np.pi, max_val=2.5 * np.pi, unit='rad'),
         'freq_offset': Quantity(value=-SIDEBAND - 3e6, min_val=-56 * 1e6, max_val=-52 * 1e6, unit='Hz 2pi'),
@@ -261,10 +261,12 @@ def opt_single_sig_exp(exp: Experiment) -> tuple:
 
 def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, driver: str = None, env_name: str = None,
                                    gate_name: str = None, debug: bool = False, MIN_AMP: float = 0.5,
-                                   AMP_RED_FCTR: float = 0.5, MIN_PLOT_FID: float = 0.9) -> tuple:
+                                   AMP_RED_FCTR: float = 0.5, MIN_PLOT_FID: float = 0.5) -> tuple:
     best_overall_fid = 0
     best_overall_params = None
     while (max_amp := amp.get_limits()[1]) > MIN_AMP:
+        amp.set_value(max_amp / 2)
+
         best_fid, best_params_vals = opt_single_sig_exp(exp)
 
         if best_fid > best_overall_fid:
@@ -275,6 +277,7 @@ def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, driver: str =
             print(f'Driver:   {driver}')
             print(f'Envelope: {env_name}')
             print(f'Fidelity: {best_fid:.3f}')
+            print(f'Amplitude:{amp.get_value():.1f}')
             print(f'Max amp.: {max_amp:.1f}')
 
             if best_fid > MIN_PLOT_FID:
@@ -288,9 +291,12 @@ def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, driver: str =
                 plt.clf()
 
         amp._set_limits(0, max_amp * AMP_RED_FCTR)
-        amp.set_value(1e-5)
 
     return best_overall_fid, best_overall_params
+
+
+def get_carrier_opt_params(drivers: set, gate_name: str) -> list:
+    return [[(gate_name, driver, 'carrier', 'framechange')] for driver in drivers]
 
 
 # assumes that the experiment comes with the various devices set up. TODO - make a function that does this
@@ -307,6 +313,8 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, debug: bool = Fals
     gate_name = gate.get_key()
     drivers = set(exp.pmap.instructions[gate_name].comps.keys())
     t_final = gate.t_end
+
+    carrier_opt_params = get_carrier_opt_params(drivers, gate_name)
     for env_name, env_to_opt_params in ENVELOPES_OPT_PARAMS.items():
         envelope_func = envelopes[env_name]
         for driver in drivers:
@@ -317,7 +325,7 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, debug: bool = Fals
             single_env_gate.add_component(env, driver)
             exp.pmap.instructions = {gate_name: single_env_gate}
 
-            opt_params = get_opt_params_conf(driver, gate_name, env_name, env_to_opt_params)
+            opt_params = get_opt_params_conf(driver, gate_name, env_name, env_to_opt_params) + carrier_opt_params
             exp.pmap.update_parameters()
             exp.pmap.set_opt_map(opt_params)
 
@@ -349,6 +357,34 @@ if __name__ == '__main__':
         temp=Quantity(value=qubit_temp, min_val=0.0, max_val=0.12, unit="K"),
     )
 
+    freq_q2 = 5.6e9
+    anhar_q2 = -240e6
+    t1_q2 = 23e-6
+    t2star_q2 = 31e-6
+    q2 = chip.Qubit(name="Q2", desc="Qubit 2",
+                    freq=Quantity(value=freq_q2, min_val=5.595e9, max_val=5.605e9, unit='Hz 2pi'),
+                    anhar=Quantity(value=anhar_q2, min_val=-380e6, max_val=-120e6, unit='Hz 2pi'),
+                    hilbert_dim=qubit_lvls,
+                    t1=Quantity(value=t1_q2, min_val=1e-6, max_val=90e-6, unit='s'),
+                    t2star=Quantity(value=t2star_q2, min_val=10e-6, max_val=90e-6, unit='s'),
+                    temp=Quantity(value=qubit_temp, min_val=0.0, max_val=0.12, unit='K')
+                    )
+
+    coupling_strength = 50e6
+    q1q2 = chip.Coupling(
+        name="Q1-Q2",
+        desc="coupling",
+        comment="Coupling qubit 1 to qubit 2",
+        connected=["Q1", "Q2"],
+        strength=Quantity(
+            value=coupling_strength,
+            min_val=-1 * 1e3,
+            max_val=200e6,
+            unit='Hz 2pi'
+        ),
+        hamiltonian_func=hamiltonians.int_XX
+    )
+
     drive = chip.Drive(
         name="d1",
         desc="Drive 1",
@@ -356,10 +392,17 @@ if __name__ == '__main__':
         connected=["Q1"],
         hamiltonian_func=hamiltonians.x_drive
     )
+    drive2 = chip.Drive(
+        name="d2",
+        desc="Drive 2",
+        comment="Drive line 2 on qubit 2",
+        connected=["Q2"],
+        hamiltonian_func=hamiltonians.x_drive
+    )
 
     model = Model(
-        [q1],  # Individual, self-contained components
-        [drive],  # Interactions between components
+        [q1, q2],  # Individual, self-contained components
+        [drive, drive2, q1q2],  # Interactions between components
     )
 
     model.set_lindbladian(False)
@@ -410,25 +453,46 @@ if __name__ == '__main__':
         },
     )
 
-    __t_final = 7e-9  # Time for single qubit gates
-    # __t_final = 45e-9  # Time for two qubit gates
+    __t_final = 45e-9  # Time for two qubit gates
 
-    lo_freq_q1 = 5e9 + SIDEBAND
-    carrier_parameters = {
-        "freq": Quantity(value=lo_freq_q1, min_val=4.5e9, max_val=6e9, unit="Hz 2pi"),
-        "framechange": Quantity(value=0.0, min_val=-np.pi, max_val=3 * np.pi, unit="rad"),
-    }
-    carr = pulse.Carrier(
-        name="carrier", desc="Frequency of the local oscillator", params=carrier_parameters
+    lo_freq_q1 = freq_q1 + SIDEBAND
+    lo_freq_q2 = freq_q2 + SIDEBAND
+
+    carr_2Q_1 = pulse.Carrier(
+        name="carrier",
+        desc="Carrier on drive 1",
+        params={
+            'freq': Quantity(value=lo_freq_q2, min_val=0.9 * lo_freq_q2, max_val=1.1 * lo_freq_q2, unit='Hz 2pi'),
+            'framechange': Quantity(value=0.0, min_val=-np.pi, max_val=3 * np.pi, unit='rad')
+        }
     )
 
-    rx90p_q1 = gates.Instruction(
-        name="rx90p", targets=[0], t_start=0.0, t_end=__t_final, channels=["d1"]
+    carr_2Q_2 = pulse.Carrier(
+        name="carrier",
+        desc="Carrier on drive 2",
+        params={
+            'freq': Quantity(value=lo_freq_q2, min_val=0.9 * lo_freq_q2, max_val=1.1 * lo_freq_q2, unit='Hz 2pi'),
+            'framechange': Quantity(value=0.0, min_val=-np.pi, max_val=3 * np.pi, unit='rad')
+        }
     )
 
-    rx90p_q1.add_component(carr, "d1")
+    cnot12 = gates.Instruction(
+        name="cnot", targets=[0, 1], t_start=0.0, t_end=__t_final, channels=["d1", "d2"],
+        ideal=np.array([
+            [1, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 0, 1],
+            [0, 0, 1, 0]
+        ])
+    )
 
-    gate = rx90p_q1
+    cnot12.add_component(carr_2Q_1, "d1")
+    cnot12.add_component(carr_2Q_2, "d2")
+    cnot12.comps["d1"]["carrier"].params["framechange"].set_value(
+        (-SIDEBAND * __t_final) * 2 * np.pi % (2 * np.pi)
+    )
+
+    gate = cnot12
 
     parameter_map = ParameterMap(instructions=[gate], model=model, generator=generator)
     exp = Experiment(pmap=parameter_map)
