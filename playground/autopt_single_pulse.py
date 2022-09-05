@@ -9,6 +9,7 @@ import tensorflow as tf
 import numpy as np
 from matplotlib import pyplot as plt
 
+from c3.c3objs import Quantity
 from c3.experiment import Experiment
 from c3.generator.devices import AWG
 from c3.libraries import algorithms
@@ -18,6 +19,8 @@ from c3.optimizers.optimalcontrol import OptimalControl
 from c3.signal.gates import Instruction
 from c3.signal.pulse import Envelope
 from playground.plot_utils import wait_for_not_mouse_press
+
+SIDEBAND = 50e6
 
 __shared_params = {'amp', 'xy_angle', 'freq_offset', 't_final'}
 ENVELOPES_OPT_PARAMS = {'gaussian_nonorm': {'sigma'}}
@@ -203,7 +206,23 @@ def plot_splitted_population(exp: Experiment, psi_init: tf.Tensor, sequence: Lis
 
 
 def get_params_dict(opt_params: set, t_final: float) -> dict:
-    pass
+    def_params = {
+        'amp': Quantity(value=0., min_val=0.0, max_val=100.0, unit="V"),
+        't_final': Quantity(value=t_final, min_val=0.0 * t_final, max_val=2.5 * t_final, unit="s"),
+        'xy_angle': Quantity(value=0.0, min_val=-0.5 * np.pi, max_val=2.5 * np.pi, unit='rad'),
+        'freq_offset': Quantity(value=-SIDEBAND - 3e6, min_val=-56 * 1e6, max_val=-52 * 1e6, unit='Hz 2pi'),
+        'delta': Quantity(value=-1, min_val=-5, max_val=3, unit=""),
+        'sigma': Quantity(value=t_final / 4, min_val=t_final / 8, max_val=t_final / 2, unit="s"),
+        'risefall': Quantity(value=t_final / 6, min_val=t_final / 10, max_val=t_final / 2, unit="s")
+    }
+
+    params = {}
+    for param_name in opt_params & set(def_params.keys()):
+        params[param_name] = def_params[param_name]
+
+    assert len(params) == len(opt_params), 'Error: different number of params than required!'
+
+    return params
 
 
 # assumes that the experiment comes with the various devices set up. TODO - make a function that does this
