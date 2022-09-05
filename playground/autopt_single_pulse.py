@@ -259,6 +259,39 @@ def opt_single_sig_exp(exp: Experiment) -> tuple:
     return fid, best_params
 
 
+def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, driver: str = None, env_name: str = None,
+                                   gate_name: str = None, debug: bool = False, MIN_AMP: float = 0.5,
+                                   AMP_RED_FCTR: float = 0.5) -> tuple:
+    best_overall_fid = 0
+    best_overall_params = None
+    while (max_amp := amp.get_limits()[1]) > MIN_AMP:
+        best_fid, best_params_vals = opt_single_sig_exp(exp)
+
+        if best_fid > best_overall_fid:
+            best_overall_fid = best_fid
+            best_overall_params = best_params_vals
+
+        if debug:
+            print(f'Driver:   {driver}')
+            print(f'Envelope: {env_name}')
+            print(f'Fidelity: {best_fid:.3f}')
+            print(f'Max amp.: {max_amp:.1f}')
+
+            # TODO - add more plotting functionality
+            psi_init = get_init_state(exp)
+            plot_dynamics(exp, psi_init, [gate_name])
+            plt.title(f'{driver}-{env_name}, F={best_fid:.3f}')
+
+            wait_for_not_mouse_press()
+
+            plt.clf()
+
+        amp._set_limits(0, max_amp * AMP_RED_FCTR)
+        amp.set_value(1e-5)
+
+    return best_overall_fid, best_overall_params
+
+
 # assumes that the experiment comes with the various devices set up. TODO - make a function that does this
 def find_opt_env_for_gate(exp: Experiment, gate: Instruction, debug: bool = False):
     # plan:
@@ -287,24 +320,11 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, debug: bool = Fals
             exp.pmap.update_parameters()
             exp.pmap.set_opt_map(opt_params)
 
-            best_fid, best_params_vals = opt_single_sig_exp(exp)
+            amp = params['amp']
+            best_fid, best_params_vals = find_opt_params_for_single_env(exp, amp, driver, env_name, gate_name, debug)
 
             best_fid_per_env[env_name] = best_fid
             best_params_per_env[env_name] = best_params_vals
-
-            if debug:
-                print(f'Driver:   {driver}')
-                print(f'Envelope: {env_name}')
-                print(f'Fidelity: {best_fid:.3f}')
-
-                # TODO - add more plotting functionality
-                psi_init = get_init_state(exp)
-                plot_dynamics(exp, psi_init, [gate_name])
-                plt.title(f'{driver}-{env_name}, F={best_fid:.3f}')
-
-                wait_for_not_mouse_press()
-
-                plt.clf()
 
             exp.pmap.instructions = {}
 
