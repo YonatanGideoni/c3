@@ -170,7 +170,7 @@ def plot_splitted_population(
     plt.show()
 
 
-def wait_for_not_mouse_press(timeout: float = 30.):
+def wait_for_not_mouse_press(timeout: float = 10.):
     start_time = time()
     while not plt.waitforbuttonpress(timeout=1.):
         if time() - start_time > timeout:

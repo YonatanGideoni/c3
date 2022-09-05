@@ -261,7 +261,7 @@ def opt_single_sig_exp(exp: Experiment) -> tuple:
 
 def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, driver: str = None, env_name: str = None,
                                    gate_name: str = None, debug: bool = False, MIN_AMP: float = 0.5,
-                                   AMP_RED_FCTR: float = 0.5, MIN_PLOT_FID: float = 0.5) -> tuple:
+                                   AMP_RED_FCTR: float = 0.5, MIN_PLOT_FID: float = 0.8) -> tuple:
     best_overall_fid = 0
     best_overall_params = None
     while (max_amp := amp.get_limits()[1]) > MIN_AMP:
@@ -486,13 +486,33 @@ if __name__ == '__main__':
         ])
     )
 
-    cnot12.add_component(carr_2Q_1, "d1")
-    cnot12.add_component(carr_2Q_2, "d2")
-    cnot12.comps["d1"]["carrier"].params["framechange"].set_value(
-        (-SIDEBAND * __t_final) * 2 * np.pi % (2 * np.pi)
+    cz = gates.Instruction(
+        name="cz", targets=[0, 1], t_start=0.0, t_end=__t_final, channels=["d1", "d2"],
+        ideal=np.array([
+            [1, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, -1]
+        ])
     )
 
-    gate = cnot12
+    cy = gates.Instruction(
+        name="cy", targets=[0, 1], t_start=0.0, t_end=__t_final, channels=["d1", "d2"],
+        ideal=np.array([
+            [1, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 0, -1j],
+            [0, 0, 1j, 0]
+        ])
+    )
+
+    gate = cy
+
+    gate.add_component(carr_2Q_1, "d1")
+    gate.add_component(carr_2Q_2, "d2")
+    gate.comps["d1"]["carrier"].params["framechange"].set_value(
+        (-SIDEBAND * __t_final) * 2 * np.pi % (2 * np.pi)
+    )
 
     parameter_map = ParameterMap(instructions=[gate], model=model, generator=generator)
     exp = Experiment(pmap=parameter_map)
