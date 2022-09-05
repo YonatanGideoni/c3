@@ -3,6 +3,7 @@ import os
 import tempfile
 from collections import defaultdict
 from copy import deepcopy
+from functools import reduce
 from typing import List
 
 import tensorflow as tf
@@ -229,6 +230,15 @@ def get_opt_params_conf(driver: str, gate_key: str, env_name, env_to_opt_params:
     return [[(gate_key, driver, env_name, param), ] for param in env_to_opt_params]
 
 
+def get_init_state(exp: Experiment, energy_level: int = None) -> tf.Tensor:
+    dims = exp.pmap.model.dims
+    n_lvls = reduce(lambda x, y: x * y, dims)
+
+    psi_init = [[0] * n_lvls]
+    psi_init[0][energy_level] = 1
+    return tf.transpose(tf.constant(psi_init, tf.complex128))
+
+
 # assumes that the experiment comes with the various devices set up. TODO - make a function that does this
 def find_opt_env_for_gate(exp: Experiment, gate: Instruction, plot: bool = False):
     # plan:
@@ -242,7 +252,6 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, plot: bool = False
     best_params_per_env = {}
     gate_name = gate.get_key()
     drivers = set(exp.pmap.instructions[gate_name].comps.keys())
-    n_qubits = len(drivers)
     t_final = gate.t_end
     for env_name, env_to_opt_params in ENVELOPES_OPT_PARAMS.items():
         envelope_func = envelopes[env_name]
@@ -265,7 +274,7 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, plot: bool = False
 
             if plot:
                 # TODO - add more plotting functionality
-                psi_init = get_init_state([0] * n_qubits, exp)
+                psi_init = get_init_state(exp)
                 plot_dynamics(exp, psi_init, [gate_name])
 
                 wait_for_not_mouse_press()
