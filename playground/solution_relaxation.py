@@ -33,6 +33,12 @@ def calc_exp_fid(exp: Experiment, index: list) -> float:
     dims = exp.pmap.model.dims
     return 1 - fidelities.unitary_infid_set(exp.propagators, exp.pmap.instructions, index, dims)
 
+def set_amps_to_zero(exp: Experiment):
+    for instruction in exp.pmap.instructions.values():
+        for channel in instruction.comps.values():
+            for component in channel.values():
+                if "amp" in component.params:
+                    component.params['amp'].set_value(0)
 
 GATESET_OPT_MAP = [['cnot[0, 1]-d1-carrier-framechange'],
                    ['cnot[0, 1]-d2-carrier-framechange'],
@@ -197,19 +203,21 @@ GATESET_OPT_MAP = [['cnot[0, 1]-d1-carrier-framechange'],
                    ['cnot[0, 1]-d2-flattop_gauss4-xy_angle'],
                    ['cnot[0, 1]-d2-flattop_gauss4-t_final']]
 if __name__ == '__main__':
-    INIT_REG_STRENGTH = 3.28e-04
-    reg_fctr = 1.5
+    INIT_REG_STRENGTH = 1e3
+    reg_fctr = 0.5
     reg_strength = INIT_REG_STRENGTH
 
-    # cfg_path = 'two_qubits_entanglement_cnot_gauss_flattop_mix_complex_sol.hjson'
+    cfg_path = 'two_qubits_entanglement_cnot_gauss_flattop_mix_complex_sol.hjson'
 
-    cfg_path = f'flattop_gauss_mix_complex_sol_relaxation_reg_{reg_strength:.2e}.hjson'
-    reg_strength *= reg_fctr
+    # cfg_path = f'flattop_gauss_mix_complex_sol_relaxation_reg_{reg_strength:.2e}.hjson'
+    # reg_strength *= reg_fctr
 
     exp = Experiment()
     exp.read_config(filepath=cfg_path)
     exp.pmap.set_opt_map(GATESET_OPT_MAP)
     awg = exp.pmap.generator.devices['AWG']
+
+    set_amps_to_zero(exp)
 
     drivers_signals = exp.pmap.instructions['cnot[0, 1]'].comps
     drivers_signals = {driver: {sig_name: sig for sig_name, sig in signals.items() if 'carrier' not in sig_name}
