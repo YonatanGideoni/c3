@@ -31,12 +31,15 @@ for env_params in ENVELOPES_OPT_PARAMS.values():
 
 
 def setup_experiment_opt_ctrl(exp: Experiment, maxiter: int = 50) -> OptimalControl:
+    # TODO - better set this
+    n_qubits = len(exp.pmap.model.dims)
+    fid_subspace = [f'Q{i}' for i in range(n_qubits)]
     log_dir = os.path.join(tempfile.TemporaryDirectory().name, "c3logs")
 
     opt = OptimalControl(
         dir_path=log_dir,
         fid_func=unitary_infid_set,
-        fid_subspace=["Q1"],  # TODO-set this automatically
+        fid_subspace=fid_subspace,
         pmap=exp.pmap,
         algorithm=algorithms.lbfgs,
         options={'maxiter': maxiter},
@@ -236,10 +239,20 @@ def get_init_state(exp: Experiment, energy_level: int = None) -> tf.Tensor:
 
     if energy_level is None:
         energy_level = 0
-    
+
     psi_init = [[0] * n_lvls]
     psi_init[0][energy_level] = 1
     return tf.transpose(tf.constant(psi_init, tf.complex128))
+
+
+def opt_single_sig_exp(exp: Experiment) -> tuple:
+    exp_opt = setup_experiment_opt_ctrl(exp)
+    exp_opt.optimize_controls()
+
+    fid = 1 - exp_opt.current_best_goal
+    best_params = exp_opt.current_best_params
+
+    return fid, best_params
 
 
 # assumes that the experiment comes with the various devices set up. TODO - make a function that does this
@@ -270,9 +283,9 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, plot: bool = False
             exp.pmap.set_opt_map(opt_params)
             exp.pmap.update_parameters()
 
-            best_sig_fid, opt_params = opt_single_sig_exp(exp)
+            best_sign_fid, opt_params = opt_single_sig_exp(exp)
 
-            best_fid_per_env[env_name] = best_sig_fid
+            best_fid_per_env[env_name] = best_sign_fid
             best_params_per_env[env_name] = opt_params
 
             if plot:
