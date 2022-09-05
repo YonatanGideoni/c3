@@ -1,7 +1,6 @@
 import itertools
 import os
 import tempfile
-from collections import defaultdict
 from copy import deepcopy
 from functools import reduce
 from typing import List
@@ -12,11 +11,15 @@ from matplotlib import pyplot as plt
 
 from c3.c3objs import Quantity
 from c3.experiment import Experiment
-from c3.generator.devices import AWG
-from c3.libraries import algorithms
+import c3.generator.devices as devices
+from c3.generator.generator import Generator
+from c3.libraries import algorithms, hamiltonians, chip
 from c3.libraries.envelopes import envelopes
 from c3.libraries.fidelities import unitary_infid_set
+from c3.model import Model
 from c3.optimizers.optimalcontrol import OptimalControl
+from c3.parametermap import ParameterMap
+from c3.signal import gates, pulse
 from c3.signal.gates import Instruction
 from c3.signal.pulse import Envelope
 from playground.plot_utils import wait_for_not_mouse_press
@@ -33,7 +36,7 @@ for env_params in ENVELOPES_OPT_PARAMS.values():
 def setup_experiment_opt_ctrl(exp: Experiment, maxiter: int = 50) -> OptimalControl:
     # TODO - better set this
     n_qubits = len(exp.pmap.model.dims)
-    fid_subspace = [f'Q{i}' for i in range(n_qubits)]
+    fid_subspace = [f'Q{i + 1}' for i in range(n_qubits)]
     log_dir = os.path.join(tempfile.TemporaryDirectory().name, "c3logs")
 
     opt = OptimalControl(
@@ -91,7 +94,8 @@ def plot_dynamics(exp, psi_init, seq, disp_legend: bool = False):
         plt.legend(model.state_labels, loc='center right')
 
 
-def plot_signal(drivers_signals: dict, t_final: float, awg: AWG, n_points: int = 1000, disp_legend: bool = False):
+def plot_signal(drivers_signals: dict, t_final: float, awg: devices.AWG, n_points: int = 1000,
+                disp_legend: bool = False):
     signal_t = np.linspace(0, t_final, n_points)
 
     n_drivers = len(drivers_signals)
@@ -280,8 +284,8 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, plot: bool = False
             exp.pmap.instructions = {gate_name: single_env_gate}
 
             opt_params = get_opt_params_conf(driver, gate_name, env_name, env_to_opt_params)
-            exp.pmap.set_opt_map(opt_params)
             exp.pmap.update_parameters()
+            exp.pmap.set_opt_map(opt_params)
 
             best_sign_fid, opt_params = opt_single_sig_exp(exp)
 
@@ -299,5 +303,106 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, plot: bool = False
 
 
 if __name__ == '__main__':
-    ?
-    find_opt_env_for_gate(?, ?, plot = True)
+    qubit_lvls = 3
+    freq_q1 = 5e9
+    anhar_q1 = -210e6
+    t1_q1 = 27e-6
+    t2star_q1 = 39e-6
+    qubit_temp = 50e-3
+
+    q1 = chip.Qubit(
+        name="Q1",
+        desc="Qubit 1",
+        freq=Quantity(value=freq_q1, min_val=4.995e9, max_val=5.005e9, unit="Hz 2pi"),
+        anhar=Quantity(value=anhar_q1, min_val=-380e6, max_val=-20e6, unit="Hz 2pi"),
+        hilbert_dim=qubit_lvls,
+        t1=Quantity(value=t1_q1, min_val=1e-6, max_val=90e-6, unit="s"),
+        t2star=Quantity(value=t2star_q1, min_val=10e-6, max_val=90e-3, unit="s"),
+        temp=Quantity(value=qubit_temp, min_val=0.0, max_val=0.12, unit="K"),
+    )
+
+    drive = chip.Drive(
+        name="d1",
+        desc="Drive 1",
+        comment="Drive line 1 on qubit 1",
+        connected=["Q1"],
+        hamiltonian_func=hamiltonians.x_drive
+    )
+
+    model = Model(
+        [q1],  # Individual, self-contained components
+        [drive],  # Interactions between components
+    )
+
+    model.set_lindbladian(False)
+    model.set_dressed(True)
+
+    sim_res = 100e9  # Resolution for numerical simulation
+    awg_res = 2e9  # Realistic, limited resolution of an AWG
+    lo = devices.LO(name="lo", resolution=sim_res)
+    awg = devices.AWG(name="awg", resolution=awg_res)
+    mixer = devices.Mixer(name="mixer")
+
+    dig_to_an = devices.DigitalToAnalog(name="dac", resolution=sim_res)
+    v2hz = 1e9
+    v_to_hz = devices.VoltsToHertz(
+        name="v_to_hz", V_to_Hz=Quantity(value=v2hz, min_val=0.9e9, max_val=1.1e9, unit="Hz/V")
+    )
+
+    generator = Generator(
+        devices={
+            "LO": devices.LO(name="lo", resolution=sim_res, outputs=1),
+            "AWG": devices.AWG(name="awg", resolution=awg_res, outputs=1),
+            "DigitalToAnalog": devices.DigitalToAnalog(
+                name="dac", resolution=sim_res, inputs=1, outputs=1
+            ),
+            "Mixer": devices.Mixer(name="mixer", inputs=2, outputs=1),
+            "VoltsToHertz": devices.VoltsToHertz(
+                name="v_to_hz",
+                V_to_Hz=Quantity(value=1e9, min_val=0.9e9, max_val=1.1e9, unit="Hz/V"),
+                inputs=1,
+                outputs=1,
+            ),
+        },
+        chains={
+            "d1": {
+                "LO": [],
+                "AWG": [],
+                "DigitalToAnalog": ["AWG"],
+                "Mixer": ["LO", "DigitalToAnalog"],
+                "VoltsToHertz": ["Mixer"],
+            },
+            "d2": {
+                "LO": [],
+                "AWG": [],
+                "DigitalToAnalog": ["AWG"],
+                "Mixer": ["LO", "DigitalToAnalog"],
+                "VoltsToHertz": ["Mixer"],
+            },
+        },
+    )
+
+    __t_final = 7e-9  # Time for single qubit gates
+    # __t_final = 45e-9  # Time for two qubit gates
+
+    lo_freq_q1 = 5e9 + SIDEBAND
+    carrier_parameters = {
+        "freq": Quantity(value=lo_freq_q1, min_val=4.5e9, max_val=6e9, unit="Hz 2pi"),
+        "framechange": Quantity(value=0.0, min_val=-np.pi, max_val=3 * np.pi, unit="rad"),
+    }
+    carr = pulse.Carrier(
+        name="carrier", desc="Frequency of the local oscillator", params=carrier_parameters
+    )
+
+    rx90p_q1 = gates.Instruction(
+        name="rx90p", targets=[0], t_start=0.0, t_end=__t_final, channels=["d1"]
+    )
+
+    rx90p_q1.add_component(carr, "d1")
+
+    gate = rx90p_q1
+
+    parameter_map = ParameterMap(instructions=[gate], model=model, generator=generator)
+    exp = Experiment(pmap=parameter_map)
+
+    find_opt_env_for_gate(exp, gate, plot=True)
