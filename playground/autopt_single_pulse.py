@@ -27,7 +27,8 @@ from playground.plot_utils import wait_for_not_mouse_press
 SIDEBAND = 50e6
 
 __shared_params = {'amp', 'xy_angle', 'freq_offset', 't_final'}
-ENVELOPES_OPT_PARAMS = {'gaussian_nonorm': {'sigma'}}
+ENVELOPES_OPT_PARAMS = {'gaussian_nonorm': {'sigma'}, 'hann': set(), 'blackman_window': set(),
+                        'flattop_risefall': {'risefall'}}
 for env_params in ENVELOPES_OPT_PARAMS.values():
     for shared_param in __shared_params:
         env_params.add(shared_param)
@@ -79,17 +80,16 @@ def plot_dynamics(exp, psi_init, seq, disp_legend: bool = False):
             pops = exp.populations(psi_t, model.lindbladian)
             pop_t = np.append(pop_t, pops, axis=1)
 
-    fig, axs = plt.subplots(1, 1)
     ts = exp.ts
     dt = ts[1] - ts[0]
     ts = np.linspace(0.0, dt * pop_t.shape[1], pop_t.shape[1])
-    axs.plot(ts / 1e-9, pop_t.T)
-    axs.grid(linestyle="--")
-    axs.tick_params(
+    plt.plot(ts / 1e-9, pop_t.T)
+    plt.grid(linestyle="--")
+    plt.tick_params(
         direction="in", left=True, right=True, top=True, bottom=True
     )
-    axs.set_xlabel('Time [ns]')
-    axs.set_ylabel('Population')
+    plt.xlabel('Time [ns]')
+    plt.ylabel('Population')
     if disp_legend:
         plt.legend(model.state_labels, loc='center right')
 
@@ -215,7 +215,7 @@ def plot_splitted_population(exp: Experiment, psi_init: tf.Tensor, sequence: Lis
 
 def get_params_dict(opt_params: set, t_final: float) -> dict:
     def_params = {
-        'amp': Quantity(value=0., min_val=0.0, max_val=100.0, unit="V"),
+        'amp': Quantity(value=1e-5, min_val=0.0, max_val=100.0, unit="V"),
         't_final': Quantity(value=t_final, min_val=0.0 * t_final, max_val=2.5 * t_final, unit="s"),
         'xy_angle': Quantity(value=0.0, min_val=-0.5 * np.pi, max_val=2.5 * np.pi, unit='rad'),
         'freq_offset': Quantity(value=-SIDEBAND - 3e6, min_val=-56 * 1e6, max_val=-52 * 1e6, unit='Hz 2pi'),
@@ -260,7 +260,7 @@ def opt_single_sig_exp(exp: Experiment) -> tuple:
 
 
 # assumes that the experiment comes with the various devices set up. TODO - make a function that does this
-def find_opt_env_for_gate(exp: Experiment, gate: Instruction, plot: bool = False):
+def find_opt_env_for_gate(exp: Experiment, gate: Instruction, debug: bool = False):
     # plan:
     # optimize gate for all driver-envelope combinations
     # if the optimization didn't succeed because of a bad reason - eg. the amplitude reached its upper limit,
@@ -287,17 +287,24 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, plot: bool = False
             exp.pmap.update_parameters()
             exp.pmap.set_opt_map(opt_params)
 
-            best_sign_fid, opt_params = opt_single_sig_exp(exp)
+            best_fid, best_params_vals = opt_single_sig_exp(exp)
 
-            best_fid_per_env[env_name] = best_sign_fid
-            best_params_per_env[env_name] = opt_params
+            best_fid_per_env[env_name] = best_fid
+            best_params_per_env[env_name] = best_params_vals
 
-            if plot:
+            if debug:
+                print(f'Driver:   {driver}')
+                print(f'Envelope: {env_name}')
+                print(f'Fidelity: {best_fid:.3f}')
+
                 # TODO - add more plotting functionality
                 psi_init = get_init_state(exp)
                 plot_dynamics(exp, psi_init, [gate_name])
+                plt.title(f'{driver}-{env_name}, F={best_fid:.3f}')
 
                 wait_for_not_mouse_press()
+
+                plt.clf()
 
             exp.pmap.instructions = {}
 
@@ -405,4 +412,4 @@ if __name__ == '__main__':
     parameter_map = ParameterMap(instructions=[gate], model=model, generator=generator)
     exp = Experiment(pmap=parameter_map)
 
-    find_opt_env_for_gate(exp, gate, plot=True)
+    find_opt_env_for_gate(exp, gate, debug=True)
