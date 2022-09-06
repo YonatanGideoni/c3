@@ -296,7 +296,8 @@ def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, driver: str =
 
 
 def get_carrier_opt_params(drivers: set, gate_name: str) -> list:
-    return [[(gate_name, driver, 'carrier', 'framechange')] for driver in drivers]
+    carrier_opt_params = {'framechange', 'freq'}
+    return [[(gate_name, driver, 'carrier', carr_param)] for driver in drivers for carr_param in carrier_opt_params]
 
 
 # assumes that the experiment comes with the various devices set up. TODO - make a function that does this
@@ -506,7 +507,17 @@ if __name__ == '__main__':
         ])
     )
 
-    gate = cy
+    swap = gates.Instruction(
+        name="swap", targets=[0, 1], t_start=0.0, t_end=__t_final, channels=["d1", "d2"],
+        ideal=np.array([
+            [1, 0, 0, 0],
+            [0, 0, 1, 0],
+            [0, 1, 0, 0],
+            [0, 0, 0, 1]
+        ])
+    )
+
+    gate = swap
 
     gate.add_component(carr_2Q_1, "d1")
     gate.add_component(carr_2Q_2, "d2")
