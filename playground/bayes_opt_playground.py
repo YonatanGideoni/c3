@@ -19,6 +19,16 @@ from c3.model import Model
 from c3.optimizers.optimalcontrol import OptimalControl
 from c3.parametermap import ParameterMap
 from c3.signal import pulse, gates
+from c3.signal.pulse import Envelope
+
+__shared_params = {'amp', 'xy_angle', 'freq_offset', 't_final', 'delta'}
+ENV_PARAMS = {'gaussian_nonorm': {'sigma'}, 'hann': set(), 'blackman_window': set(),
+              'flattop_risefall': {'risefall'}}
+for env_params in ENV_PARAMS.values():
+    for shared_param in __shared_params:
+        env_params.add(shared_param)
+
+SIDEBAND = 50e6
 
 
 def calc_exp_fid(exp: Experiment, index: list) -> float:
@@ -101,9 +111,7 @@ def bayes_opt_exp(exp: Experiment, qubit_inds: list, max_sampled_points: int = 1
     return gpr, pd.DataFrame.from_records(sampled_points_data)
 
 
-if __name__ == '__main__':
-    np.random.seed(0)
-
+def setup_rx90_exp(t_final: float):
     qubit_lvls = 3
     freq_q1 = 5e9
     anhar_q1 = -210e6
@@ -140,16 +148,7 @@ if __name__ == '__main__':
 
     sim_res = 100e9  # Resolution for numerical simulation
     awg_res = 2e9  # Realistic, limited resolution of an AWG
-    lo = devices.LO(name="lo", resolution=sim_res)
-    awg = devices.AWG(name="awg", resolution=awg_res)
-    mixer = devices.Mixer(name="mixer")
-
-    dig_to_an = devices.DigitalToAnalog(name="dac", resolution=sim_res)
     v2hz = 1e9
-    v_to_hz = devices.VoltsToHertz(
-        name="v_to_hz", V_to_Hz=Quantity(value=v2hz, min_val=0.9e9, max_val=1.1e9, unit="Hz/V")
-    )
-
     generator = Generator(
         devices={
             "LO": devices.LO(name="lo", resolution=sim_res, outputs=1),
@@ -160,7 +159,7 @@ if __name__ == '__main__':
             "Mixer": devices.Mixer(name="mixer", inputs=2, outputs=1),
             "VoltsToHertz": devices.VoltsToHertz(
                 name="v_to_hz",
-                V_to_Hz=Quantity(value=1e9, min_val=0.9e9, max_val=1.1e9, unit="Hz/V"),
+                V_to_Hz=Quantity(value=v2hz, min_val=0.9 * v2hz, max_val=1.1 * v2hz, unit="Hz/V"),
                 inputs=1,
                 outputs=1,
             ),
@@ -183,31 +182,9 @@ if __name__ == '__main__':
         },
     )
 
-    t_final = 7e-9  # Time for single qubit gates
-    sideband = 50e6
+    SIDEBAND = 50e6
 
-    # gaussian params
-    gauss_params = {
-        "amp": Quantity(value=0.36, min_val=0.0, max_val=5, unit="V"),
-        "t_final": Quantity(
-            value=t_final, min_val=0.5 * t_final, max_val=1.5 * t_final, unit="s"
-        ),
-        "xy_angle": Quantity(value=0.0, min_val=-0.5 * np.pi, max_val=2.5 * np.pi, unit="rad"),
-        "freq_offset": Quantity(
-            value=-sideband - 3e6, min_val=-56 * 1e6, max_val=-52 * 1e6, unit="Hz 2pi"
-        ),
-        "delta": Quantity(value=-1, min_val=-5, max_val=3, unit=""),
-        "sigma": Quantity(value=t_final / 4, min_val=t_final / 8, max_val=t_final / 2, unit="s"),
-    }
-
-    gauss_env = pulse.Envelope(
-        name="gauss",
-        desc="Gaussian comp for single-qubit gates",
-        params=gauss_params,
-        shape=envelopes.gaussian_nonorm,
-    )
-
-    lo_freq_q1 = 5e9 + sideband
+    lo_freq_q1 = 5e9 + SIDEBAND
     carrier_parameters = {
         "freq": Quantity(value=lo_freq_q1, min_val=4.5e9, max_val=6e9, unit="Hz 2pi"),
         "framechange": Quantity(value=0.0, min_val=-np.pi, max_val=3 * np.pi, unit="rad"),
@@ -221,9 +198,7 @@ if __name__ == '__main__':
     )
 
     rx90p_q1.add_component(carr, "d1")
-    rx90p_q1.add_component(gauss_env, "d1")
 
-    single_q_gates = [rx90p_q1]
     gate = rx90p_q1
     gate_name = gate.get_key()
 
@@ -231,23 +206,73 @@ if __name__ == '__main__':
     exp = Experiment(pmap=parameter_map)
 
     exp.set_opt_gates([gate_name])
+
+    return exp, gate
+
+
+def get_opt_params_conf(driver: str, gate_key: str, env_name, env_to_opt_params: set) -> list:
+    return [[(gate_key, driver, env_name, param), ] for param in env_to_opt_params]
+
+
+def get_params_dict(params: set, t_final: float) -> dict:
+    def_params = {
+        'amp': Quantity(value=1e-5, min_val=0.0, max_val=500., unit="V"),
+        't_final': Quantity(value=t_final, min_val=0.0 * t_final, max_val=2.5 * t_final, unit="s"),
+        'xy_angle': Quantity(value=0.0, min_val=-0.5 * np.pi, max_val=2.5 * np.pi, unit='rad'),
+        'freq_offset': Quantity(value=-SIDEBAND - 3e6, min_val=-56 * 1e6, max_val=-52 * 1e6, unit='Hz 2pi'),
+        'delta': Quantity(value=-1, min_val=-5, max_val=3, unit=""),
+        'sigma': Quantity(value=t_final / 4, min_val=t_final / 8, max_val=t_final / 2, unit="s"),
+        'risefall': Quantity(value=t_final / 6, min_val=t_final / 10, max_val=t_final / 2, unit="s")
+    }
+
+    params_dict = {}
+    for param_name in params & set(def_params.keys()):
+        params_dict[param_name] = def_params[param_name]
+
+    assert len(params_dict) == len(params), 'Error: different number of params than required!'
+
+    return params_dict
+
+
+def get_carrier_opt_params(drivers: set, gate_name: str) -> list:
+    carrier_opt_params = {'framechange', 'freq'}
+    return [[(gate_name, driver, 'carrier', carr_param)] for driver in drivers for carr_param in carrier_opt_params]
+
+
+if __name__ == '__main__':
+    np.random.seed(0)
+
+    t_final = 7e-9
+    exp, rx90p = setup_rx90_exp(t_final=t_final)
+
+    gate = rx90p
+    gate_name = gate.get_key()
+
+    exp.set_opt_gates([gate_name])
     gate_seq = [gate_name]
 
     opt_gates = [gate_name]
 
-    gateset_opt_map = [
-        [
-            ("rx90p[0]", "d1", "carrier", "framechange"),
-        ],
-        [
-            ("rx90p[0]", "d1", "gauss", "amp"),
-        ],
-        [
-            ("rx90p[0]", "d1", "gauss", "freq_offset"),
-        ],
-    ]
+    gates_per_driver = {'d1': {'gaussian_nonorm': 1}}
 
-    parameter_map.set_opt_map(gateset_opt_map)
+    opt_map_params = get_carrier_opt_params(set(gates_per_driver.keys()), gate_name)
+    for driver, driver_envelopes in gates_per_driver.items():
+        for env_name, n_envelopes in driver_envelopes.items():
+            for n_envelope in range(n_envelopes):
+                env_id_name = env_name + str(n_envelope)
+                # add the envelope to the gate
+                params_names = ENV_PARAMS[env_name]
+                def_params = get_params_dict(params_names, t_final)
+                env = Envelope(name=env_id_name, normalize_pulse=True, params=def_params,
+                               shape=envelopes.envelopes[env_name])
+                gate.add_component(env, driver)
+
+                # add opt params to opt map
+                opt_map_params += get_opt_params_conf(driver, gate_name, env_id_name, params_names)
+
+    exp.pmap.instructions = {gate_name: gate}
+    exp.pmap.update_parameters()
+    exp.pmap.set_opt_map(opt_map_params)
 
     gpr, sampled_points = bayes_opt_exp(exp, qubit_inds=[0])
     opt_point = sampled_points.point.iloc[sampled_points.obj.argmax()]
