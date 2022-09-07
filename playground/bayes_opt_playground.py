@@ -89,8 +89,8 @@ def bayes_opt_exp(exp: Experiment, qubit_inds: list, max_sampled_points: int = 1
 
     sampled_points_data = []
     optimizer = BayesianOptimizer(estimator=gpr, query_strategy=max_EI)
-    large_points_pool = transform_exp_params_input(2 * np.random.rand(POINTS_POOL_SIZE, n_params) - 1)
     np_rng = np.random.default_rng(seed=0)
+    large_points_pool = transform_exp_params_input(2 * np.random.rand(POINTS_POOL_SIZE, n_params) - 1)
     while len(sampled_points_data) < max_sampled_points:
         # find next point to sample via EI
         subpool = np_rng.choice(large_points_pool, size=POINTS_POOL_PER_ITER, replace=False)
@@ -216,8 +216,8 @@ def get_opt_params_conf(driver: str, gate_key: str, env_name, env_to_opt_params:
 
 def get_params_dict(params: set, t_final: float) -> dict:
     def_params = {
-        'amp': Quantity(value=1e-5, min_val=0.0, max_val=500., unit="V"),
-        't_final': Quantity(value=t_final, min_val=0.0 * t_final, max_val=2.5 * t_final, unit="s"),
+        'amp': Quantity(value=1e-5, min_val=0.0, max_val=200., unit="V"),
+        't_final': Quantity(value=t_final, min_val=0.5 * t_final, max_val=2.5 * t_final, unit="s"),
         'xy_angle': Quantity(value=0.0, min_val=-0.5 * np.pi, max_val=2.5 * np.pi, unit='rad'),
         'freq_offset': Quantity(value=-SIDEBAND - 3e6, min_val=-56 * 1e6, max_val=-52 * 1e6, unit='Hz 2pi'),
         'delta': Quantity(value=-1, min_val=-5, max_val=3, unit=""),
@@ -256,6 +256,7 @@ if __name__ == '__main__':
     gates_per_driver = {'d1': {'gaussian_nonorm': 1}}
 
     opt_map_params = get_carrier_opt_params(set(gates_per_driver.keys()), gate_name)
+    params_to_exclude_from_opt = {'t_final', 'delta'}
     for driver, driver_envelopes in gates_per_driver.items():
         for env_name, n_envelopes in driver_envelopes.items():
             for n_envelope in range(n_envelopes):
@@ -268,7 +269,8 @@ if __name__ == '__main__':
                 gate.add_component(env, driver)
 
                 # add opt params to opt map
-                opt_map_params += get_opt_params_conf(driver, gate_name, env_id_name, params_names)
+                opt_map_params += get_opt_params_conf(driver, gate_name, env_id_name,
+                                                      params_names - params_to_exclude_from_opt)
 
     exp.pmap.instructions = {gate_name: gate}
     exp.pmap.update_parameters()
