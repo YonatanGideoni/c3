@@ -2,6 +2,7 @@ import os
 import tempfile
 
 import numpy as np
+import pandas as pd
 from modAL.acquisition import max_EI
 from modAL.models import BayesianOptimizer
 from sklearn.gaussian_process import GaussianProcessRegressor
@@ -20,7 +21,8 @@ from c3.parametermap import ParameterMap
 from c3.signal import pulse, gates
 
 
-def calc_exp_fid(exp: Experiment, index: list, dims: list) -> float:
+def calc_exp_fid(exp: Experiment, index: list) -> float:
+    dims = exp.pmap.model.dims
     return (1 - unitary_infid_set(exp.propagators, exp.pmap.instructions, index, dims)).numpy()
 
 
@@ -41,11 +43,8 @@ def setup_experiment_opt_ctrl(exp: Experiment, maxiter: int = 15) -> OptimalCont
     return opt
 
 
-def set_rand_point(exp: Experiment):
-    pmap = exp.pmap
-    n_params = len(pmap.get_opt_map())
-
-    pmap.set_parameters_scaled(2 * np.random.rand(n_params) - 1)
+def set_point_in_pmap(exp: Experiment, point: np.ndarray):
+    exp.pmap.set_parameters_scaled(inv_transform_exp_params_input(point))
 
 
 def transform_exp_params_input(x: np.ndarray) -> np.ndarray:
@@ -64,8 +63,8 @@ def inv_transform_fid_func_output(y: np.ndarray) -> np.ndarray:
     return 1 / (1 + np.exp(-y))
 
 
-def bayes_opt_exp(exp: Experiment, qubit_inds: list, max_n_points: int = 100,
-                  INIT_TYPICAL_LENGTH: float = 0.1, POINTS_POOL_SIZE: int = 10 ** 4) -> GaussianProcessRegressor:
+def bayes_opt_exp(exp: Experiment, qubit_inds: list, max_n_points: int = 1000,
+                  INIT_TYPICAL_LENGTH: float = 0.1, POINTS_POOL_SIZE: int = 10 ** 5) -> tuple:
     n_params = len(exp.pmap.get_opt_map())
     dims = exp.pmap.model.dims
 
@@ -77,21 +76,27 @@ def bayes_opt_exp(exp: Experiment, qubit_inds: list, max_n_points: int = 100,
                                                            qubit_inds, dims)
 
     sampled_points = []
-    points_pool = transform_exp_params_input(2 * np.random.rand(n_params, POINTS_POOL_SIZE) - 1)
+    points_pool = transform_exp_params_input(2 * np.random.rand(POINTS_POOL_SIZE, n_params) - 1)
     optimizer = BayesianOptimizer(estimator=gpr, query_strategy=max_EI)
     while len(sampled_points) < max_n_points:
         pass
         # find next point to sample via EI
-        opt_points_inds, opt_points_instances = optimizer.query(points_pool)
-        print()
+        _, opt_points = optimizer.query(points_pool)
+        opt_point = opt_points[0]
 
-        # sample it and update posterior
+        # update posterior
+        set_point_in_pmap(exp, opt_point)
+        exp.compute_propagators()
+        func_res = transform_fid_func_output(fid_func(exp))
+        sampled_points.append({'obj': func_res, 'point': opt_point})
+
+        optimizer.teach(opt_point.reshape(1, -1), np.array([func_res]))
 
         # TODO - update hyperparameters (once every __ iterations?)
 
         # TODO - get another point to sample by optimizing the previous one via LBFGS
 
-    return gpr
+    return gpr, pd.DataFrame.from_records(sampled_points)
 
 
 if __name__ == '__main__':
@@ -242,4 +247,11 @@ if __name__ == '__main__':
 
     parameter_map.set_opt_map(gateset_opt_map)
 
-    bayes_opt_exp(exp, qubit_inds=[0])
+    gpr, sampled_points = bayes_opt_exp(exp, qubit_inds=[0])
+    opt_point = sampled_points.point.iloc[sampled_points.obj.argmax()]
+
+    set_point_in_pmap(exp, opt_point)
+    exp.compute_propagators()
+
+    print(f'F={calc_exp_fid(exp, [0]):.3f}')
+    exp.pmap.print_parameters()
