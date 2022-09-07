@@ -55,7 +55,8 @@ def inv_transform_exp_params_input(z: np.ndarray) -> np.ndarray:
     return 2 / (1 + np.exp(-z)) - 1
 
 
-def transform_fid_func_output(y: np.ndarray) -> np.ndarray:
+def transform_fid_func_output(y: np.ndarray, MAX_VAL: float = 0.995) -> np.ndarray:
+    y = np.clip(y, a_min=-np.inf, a_max=MAX_VAL)
     return np.log((1 - y) / y)
 
 
@@ -63,8 +64,9 @@ def inv_transform_fid_func_output(y: np.ndarray) -> np.ndarray:
     return 1 / (1 + np.exp(-y))
 
 
-def bayes_opt_exp(exp: Experiment, qubit_inds: list, max_n_points: int = 1000,
-                  INIT_TYPICAL_LENGTH: float = 0.1, POINTS_POOL_SIZE: int = 10 ** 5) -> tuple:
+def bayes_opt_exp(exp: Experiment, qubit_inds: list, max_sampled_points: int = 100,
+                  INIT_TYPICAL_LENGTH: float = 0.1, POINTS_POOL_SIZE: int = 10 ** 6,
+                  POINTS_POOL_PER_ITER: int = 10 ** 4) -> tuple:
     n_params = len(exp.pmap.get_opt_map())
     dims = exp.pmap.model.dims
 
@@ -75,28 +77,28 @@ def bayes_opt_exp(exp: Experiment, qubit_inds: list, max_n_points: int = 1000,
     fid_func = lambda experiment: sparse_unitary_infid_set(experiment.propagators, experiment.pmap.instructions,
                                                            qubit_inds, dims)
 
-    sampled_points = []
-    points_pool = transform_exp_params_input(2 * np.random.rand(POINTS_POOL_SIZE, n_params) - 1)
+    sampled_points_data = []
     optimizer = BayesianOptimizer(estimator=gpr, query_strategy=max_EI)
-    while len(sampled_points) < max_n_points:
-        pass
+    large_points_pool = transform_exp_params_input(2 * np.random.rand(POINTS_POOL_SIZE, n_params) - 1)
+    np_rng = np.random.default_rng(seed=0)
+    while len(sampled_points_data) < max_sampled_points:
         # find next point to sample via EI
-        _, opt_points = optimizer.query(points_pool)
+        subpool = np_rng.choice(large_points_pool, size=POINTS_POOL_PER_ITER, replace=False)
+        points_inds, opt_points = optimizer.query(subpool)
         opt_point = opt_points[0]
 
         # update posterior
         set_point_in_pmap(exp, opt_point)
         exp.compute_propagators()
         func_res = transform_fid_func_output(fid_func(exp))
-        sampled_points.append({'obj': func_res, 'point': opt_point})
+        fid = calc_exp_fid(exp, qubit_inds)
+        sampled_points_data.append({'obj': func_res, 'fid': fid, 'point': opt_point})
 
         optimizer.teach(opt_point.reshape(1, -1), np.array([func_res]))
 
-        # TODO - update hyperparameters (once every __ iterations?)
+        # TODO - get another point by optimizing the previous one via LBFGS
 
-        # TODO - get another point to sample by optimizing the previous one via LBFGS
-
-    return gpr, pd.DataFrame.from_records(sampled_points)
+    return gpr, pd.DataFrame.from_records(sampled_points_data)
 
 
 if __name__ == '__main__':
