@@ -5,6 +5,8 @@ import numpy as np
 import pandas as pd
 from modAL.acquisition import max_EI
 from modAL.models import BayesianOptimizer
+from scipy.optimize import minimize
+from scipy.stats import norm
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF
 
@@ -74,9 +76,21 @@ def inv_transform_fid_func_output(y: np.ndarray) -> np.ndarray:
     return 1 / (1 + np.exp(-y))
 
 
+def ei_acquire_point(gpr: GaussianProcessRegressor, n_params: int, prev_best: float) -> np.ndarray:
+    def neg_expected_improvement(x: np.ndarray) -> float:
+        [y_mean], [y_std] = gpr.predict(x.reshape(1, -1), return_std=True)
+        delta_score = y_mean - prev_best
+        normalized_y = delta_score / y_std
+        return -(delta_score * (1 - norm.cdf(normalized_y)) + y_std * -norm.pdf(normalized_y))
+
+    init_guess = transform_exp_params_input(2 * np.random.rand(n_params) - 1)
+    opt_res = minimize(neg_expected_improvement, x0=init_guess)
+
+    return opt_res.x
+
+
 def bayes_opt_exp(exp: Experiment, qubit_inds: list, max_sampled_points: int = 100,
-                  INIT_TYPICAL_LENGTH: float = 0.1, POINTS_POOL_SIZE: int = 10 ** 6,
-                  POINTS_POOL_PER_ITER: int = 10 ** 4) -> tuple:
+                  INIT_TYPICAL_LENGTH: float = 0.1, INIT_BEST: int = 10) -> tuple:
     n_params = len(exp.pmap.get_opt_map())
     dims = exp.pmap.model.dims
 
@@ -89,22 +103,20 @@ def bayes_opt_exp(exp: Experiment, qubit_inds: list, max_sampled_points: int = 1
 
     sampled_points_data = []
     optimizer = BayesianOptimizer(estimator=gpr, query_strategy=max_EI)
-    np_rng = np.random.default_rng(seed=0)
-    large_points_pool = transform_exp_params_input(2 * np.random.rand(POINTS_POOL_SIZE, n_params) - 1)
+    best_so_far = INIT_BEST
     while len(sampled_points_data) < max_sampled_points:
         # find next point to sample via EI
-        subpool = np_rng.choice(large_points_pool, size=POINTS_POOL_PER_ITER, replace=False)
-        points_inds, opt_points = optimizer.query(subpool)
-        opt_point = opt_points[0]
+        sample_point = ei_acquire_point(optimizer, n_params, best_so_far)
 
         # update posterior
-        set_point_in_pmap(exp, opt_point)
+        set_point_in_pmap(exp, sample_point)
         exp.compute_propagators()
         func_res = transform_fid_func_output(fid_func(exp))
+        best_so_far = min(best_so_far, func_res)
         fid = calc_exp_fid(exp, qubit_inds)
-        sampled_points_data.append({'obj': func_res, 'fid': fid, 'point': opt_point})
+        sampled_points_data.append({'obj': func_res, 'fid': fid, 'point': sample_point})
 
-        optimizer.teach(opt_point.reshape(1, -1), np.array([func_res]))
+        optimizer.teach(sample_point.reshape(1, -1), np.array([func_res]))
 
         # TODO - get another point by optimizing the previous one via LBFGS
 
