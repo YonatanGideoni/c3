@@ -89,7 +89,7 @@ def ei_acquire_point(gpr: GaussianProcessRegressor, n_params: int, prev_best: fl
     return opt_res.x
 
 
-def bayes_opt_exp(exp: Experiment, qubit_inds: list, max_sampled_points: int = 1000,
+def bayes_opt_exp(exp: Experiment, qubit_inds: list, max_sampled_points: int = 100,
                   INIT_TYPICAL_LENGTH: float = 0.1, INIT_BEST: int = 10) -> tuple:
     n_params = len(exp.pmap.get_opt_map())
     dims = exp.pmap.model.dims
@@ -235,7 +235,7 @@ def get_opt_params_conf(driver: str, gate_key: str, env_name, env_to_opt_params:
 
 def get_params_dict(params: set, t_final: float) -> dict:
     def_params = {
-        'amp': Quantity(value=1e-5, min_val=0.0, max_val=200., unit="V"),
+        'amp': Quantity(value=1e-5, min_val=0.0, max_val=20., unit="V"),
         't_final': Quantity(value=t_final, min_val=0.5 * t_final, max_val=2.5 * t_final, unit="s"),
         'xy_angle': Quantity(value=0.0, min_val=-0.5 * np.pi, max_val=2.5 * np.pi, unit='rad'),
         'freq_offset': Quantity(value=-SIDEBAND - 3e6, min_val=-56 * 1e6, max_val=-52 * 1e6, unit='Hz 2pi'),
