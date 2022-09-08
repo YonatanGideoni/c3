@@ -69,7 +69,7 @@ def inv_transform_exp_params_input(z: np.ndarray) -> np.ndarray:
 
 def transform_fid_func_output(y: np.ndarray, MAX_VAL: float = 0.995) -> np.ndarray:
     y = np.clip(y, a_min=-np.inf, a_max=MAX_VAL)
-    return np.log((1 - y) / y)
+    return np.log(y / (1 - y))
 
 
 def inv_transform_fid_func_output(y: np.ndarray) -> np.ndarray:
@@ -77,36 +77,40 @@ def inv_transform_fid_func_output(y: np.ndarray) -> np.ndarray:
 
 
 def ei_acquire_point(gpr: GaussianProcessRegressor, n_params: int, prev_best: float) -> np.ndarray:
-    def neg_expected_improvement(x: np.ndarray) -> float:
+    def expected_improvement(x: np.ndarray) -> float:
         [y_mean], [y_std] = gpr.predict(x.reshape(1, -1), return_std=True)
         delta_score = y_mean - prev_best
         normalized_y = delta_score / y_std
-        return -(delta_score * (1 - norm.cdf(normalized_y)) + y_std * -norm.pdf(normalized_y))
+        return delta_score * (1 - norm.cdf(normalized_y)) + y_std * -norm.pdf(normalized_y)
 
     init_guess = transform_exp_params_input(2 * np.random.rand(n_params) - 1)
-    opt_res = minimize(neg_expected_improvement, x0=init_guess)
+    opt_res = minimize(expected_improvement, x0=init_guess)
 
     return opt_res.x
 
 
-def bayes_opt_exp(exp: Experiment, qubit_inds: list, max_sampled_points: int = 100,
+def bayes_opt_exp(exp: Experiment, qubit_inds: list, max_sampled_points: int = 1000,
                   INIT_TYPICAL_LENGTH: float = 0.1, INIT_BEST: int = 10) -> tuple:
     n_params = len(exp.pmap.get_opt_map())
     dims = exp.pmap.model.dims
 
     kernel = RBF(np.ones(n_params) * INIT_TYPICAL_LENGTH)
-    gpr = GaussianProcessRegressor(kernel, random_state=0)
+    gpr = GaussianProcessRegressor(kernel, random_state=0, n_restarts_optimizer=2)
 
     # setup fidelity function
     fid_func = lambda experiment: sparse_unitary_infid_set(experiment.propagators, experiment.pmap.instructions,
                                                            qubit_inds, dims)
 
-    sampled_points_data = []
-    optimizer = BayesianOptimizer(estimator=gpr, query_strategy=max_EI)
     best_so_far = INIT_BEST
-    while len(sampled_points_data) < max_sampled_points:
+    fids = []
+    func_ress = []
+    points = []
+    while (n_sampled_points := len(fids)) < max_sampled_points:
+        print(n_sampled_points)
+        print(best_so_far)
+
         # find next point to sample via EI
-        sample_point = ei_acquire_point(optimizer, n_params, best_so_far)
+        sample_point = ei_acquire_point(gpr, n_params, best_so_far)
 
         # update posterior
         set_point_in_pmap(exp, sample_point)
@@ -114,13 +118,16 @@ def bayes_opt_exp(exp: Experiment, qubit_inds: list, max_sampled_points: int = 1
         func_res = transform_fid_func_output(fid_func(exp))
         best_so_far = min(best_so_far, func_res)
         fid = calc_exp_fid(exp, qubit_inds)
-        sampled_points_data.append({'obj': func_res, 'fid': fid, 'point': sample_point})
 
-        optimizer.teach(sample_point.reshape(1, -1), np.array([func_res]))
+        func_ress.append(func_res)
+        fids.append(fid)
+        points.append(sample_point)
+
+        gpr.fit(points, func_ress)
 
         # TODO - get another point by optimizing the previous one via LBFGS
 
-    return gpr, pd.DataFrame.from_records(sampled_points_data)
+    return gpr, pd.DataFrame({'fid': fids, 'objective': func_ress, 'point': points})
 
 
 def setup_rx90_exp(t_final: float):
@@ -289,7 +296,7 @@ if __name__ == '__main__':
     exp.pmap.set_opt_map(opt_map_params)
 
     gpr, sampled_points = bayes_opt_exp(exp, qubit_inds=[0])
-    opt_point = sampled_points.point.iloc[sampled_points.obj.argmax()]
+    opt_point = sampled_points.point.iloc[sampled_points.objective.argmin()]
 
     set_point_in_pmap(exp, opt_point)
     exp.compute_propagators()
