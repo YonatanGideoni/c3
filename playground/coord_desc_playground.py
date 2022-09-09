@@ -1,11 +1,13 @@
 import os
 import tempfile
+from copy import deepcopy
+from typing import Tuple
 
 import numpy as np
 import pandas as pd
 from modAL.acquisition import max_EI
 from modAL.models import BayesianOptimizer
-from scipy.optimize import minimize
+from scipy.optimize import minimize, minimize_scalar
 from scipy.stats import norm
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF
@@ -170,18 +172,47 @@ def get_carrier_opt_params(drivers: set, gate_name: str) -> list:
     return [[(gate_name, driver, 'carrier', carr_param)] for driver in drivers for carr_param in carrier_opt_params]
 
 
+def set_param_in_pmap(exp: Experiment, param_val, ind_to_opt: int):
+    params = exp.pmap.get_parameters_scaled().numpy()
+    params[ind_to_opt] = param_val
+    set_point_in_pmap(exp, params)
+
+
+# TODO - try without constraints but by just transforming the parameter?
+def opt_param(exp: Experiment, ind_to_opt: int, qubit_inds: list) -> Tuple[str, Quantity, Quantity]:
+    param_name = exp.pmap.opt_map[ind_to_opt][0]
+    orig_val = deepcopy(exp.pmap.get_parameter_dict()[param_name])
+
+    dims = exp.pmap.model.dims
+
+    def opt_func(param_val: float) -> float:
+        set_param_in_pmap(exp, param_val, ind_to_opt)
+
+        exp.compute_propagators()
+
+        return sparse_unitary_infid_set(exp.propagators, exp.pmap.instructions, qubit_inds, dims)
+
+    opt_res = minimize_scalar(opt_func, bounds=(-1, 1))
+
+    set_param_in_pmap(exp, opt_res.x, ind_to_opt)
+
+    opt_val = deepcopy(exp.pmap.get_parameter_dict()[param_name])
+
+    return param_name, orig_val, opt_val
+
+
 def coordinate_descent_opt_exp(exp: Experiment, qubit_inds: list, n_params: float) -> np.ndarray:
     n_iters = 0
     while True:
         n_iters += 1
         ind_to_opt = np.random.randint(n_params)
-        param_name, prev_qty, curr_qty = opt_param(exp, ind_to_opt)
+        param_name, prev_qty, curr_qty = opt_param(exp, ind_to_opt, qubit_inds)
 
         exp.compute_propagators()
         fid = calc_exp_fid(exp, qubit_inds)
 
         print(f'F={fid:.3f}')
-        print(f'{param_name}: {prev_qty}->{curr_qty}')
+        print(f'{param_name}: {prev_qty}-> {curr_qty}')
 
 
 if __name__ == '__main__':
@@ -220,3 +251,5 @@ if __name__ == '__main__':
     exp.pmap.instructions = {gate_name: gate}
     exp.pmap.update_parameters()
     exp.pmap.set_opt_map(opt_map_params)
+
+    coordinate_descent_opt_exp(exp, [0], n_params=len(opt_map_params))
