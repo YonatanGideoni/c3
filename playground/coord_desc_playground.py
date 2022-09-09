@@ -170,6 +170,20 @@ def get_carrier_opt_params(drivers: set, gate_name: str) -> list:
     return [[(gate_name, driver, 'carrier', carr_param)] for driver in drivers for carr_param in carrier_opt_params]
 
 
+def coordinate_descent_opt_exp(exp: Experiment, qubit_inds: list, n_params: float) -> np.ndarray:
+    n_iters = 0
+    while True:
+        n_iters += 1
+        ind_to_opt = np.random.randint(n_params)
+        param_name, prev_qty, curr_qty = opt_param(exp, ind_to_opt)
+
+        exp.compute_propagators()
+        fid = calc_exp_fid(exp, qubit_inds)
+
+        print(f'F={fid:.3f}')
+        print(f'{param_name}: {prev_qty}->{curr_qty}')
+
+
 if __name__ == '__main__':
     np.random.seed(0)
 
