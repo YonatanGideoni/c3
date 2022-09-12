@@ -792,7 +792,7 @@ def orbit_infid(
 
 
 def amplitude_regularization_cost(propagators: dict, instructions: dict, index, dims, n_eval=-1,
-                                  loss_func_type: str = 'sumOverSqrtMax', reg_strength: float = 1e-5):
+                                  loss_func_type: str = 'sumOverSqrtMax', reg_strength: float = 1e-2):
     """Regularization term for sparse_unitary_infid_set - makes it be expensive to have relatively
     large amplitudes to induce sparseness."""
     if loss_func_type == 'sqrt':
