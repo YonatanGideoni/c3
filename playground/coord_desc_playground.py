@@ -151,7 +151,7 @@ def get_opt_params_conf(driver: str, gate_key: str, env_name, env_to_opt_params:
 
 def get_params_dict(params: set, t_final: float) -> dict:
     def_params = {
-        'amp': Quantity(value=1e-5, min_val=0.0, max_val=20., unit="V"),
+        'amp': Quantity(value=1., min_val=0.0, max_val=200., unit="V"),
         't_final': Quantity(value=t_final, min_val=0.5 * t_final, max_val=2.5 * t_final, unit="s"),
         'xy_angle': Quantity(value=0.0, min_val=-0.5 * np.pi, max_val=2.5 * np.pi, unit='rad'),
         'freq_offset': Quantity(value=-SIDEBAND - 3e6, min_val=-56 * 1e6, max_val=-52 * 1e6, unit='Hz 2pi'),
@@ -170,7 +170,7 @@ def get_params_dict(params: set, t_final: float) -> dict:
 
 
 def get_carrier_opt_params(drivers: set, gate_name: str) -> list:
-    carrier_opt_params = {'framechange', 'freq'}
+    carrier_opt_params = {'framechange'}
     return [[(gate_name, driver, 'carrier', carr_param)] for driver in drivers for carr_param in carrier_opt_params]
 
 
@@ -229,7 +229,7 @@ def plot_param_loss_landscape(exp: Experiment, qubit_inds: list, param_ind: int,
     set_param_in_pmap(exp, orig_val, param_ind)
 
 
-def coordinate_descent_opt_exp(exp: Experiment, qubit_inds: list, n_params: float):
+def coordinate_descent_opt_exp(exp: Experiment, qubit_inds: list, n_params: float, plot: bool = True):
     n_iters = 0
     while True:
         n_iters += 1
@@ -242,16 +242,172 @@ def coordinate_descent_opt_exp(exp: Experiment, qubit_inds: list, n_params: floa
         print(f'F={fid:.3f}')
         print(f'{param_name}: {prev_qty}-> {curr_qty}')
 
-        plot_param_loss_landscape(exp, qubit_inds, ind_to_opt, param_name)
+        if plot:
+            plot_param_loss_landscape(exp, qubit_inds, ind_to_opt, param_name)
+
+
+def setup_cnot_exp(t_final: float):
+    qubit_lvls = 3
+    freq_q1 = 5e9
+    anhar_q1 = -210e6
+    t1_q1 = 27e-6
+    t2star_q1 = 39e-6
+    qubit_temp = 50e-3
+
+    q1 = chip.Qubit(
+        name="Q1",
+        desc="Qubit 1",
+        freq=Quantity(value=freq_q1, min_val=4.995e9, max_val=5.005e9, unit="Hz 2pi"),
+        anhar=Quantity(value=anhar_q1, min_val=-380e6, max_val=-20e6, unit="Hz 2pi"),
+        hilbert_dim=qubit_lvls,
+        t1=Quantity(value=t1_q1, min_val=1e-6, max_val=90e-6, unit="s"),
+        t2star=Quantity(value=t2star_q1, min_val=10e-6, max_val=90e-3, unit="s"),
+        temp=Quantity(value=qubit_temp, min_val=0.0, max_val=0.12, unit="K"),
+    )
+
+    freq_q2 = 5.6e9
+    anhar_q2 = -240e6
+    t1_q2 = 23e-6
+    t2star_q2 = 31e-6
+    q2 = chip.Qubit(name="Q2", desc="Qubit 2",
+                    freq=Quantity(value=freq_q2, min_val=5.595e9, max_val=5.605e9, unit='Hz 2pi'),
+                    anhar=Quantity(value=anhar_q2, min_val=-380e6, max_val=-120e6, unit='Hz 2pi'),
+                    hilbert_dim=qubit_lvls,
+                    t1=Quantity(value=t1_q2, min_val=1e-6, max_val=90e-6, unit='s'),
+                    t2star=Quantity(value=t2star_q2, min_val=10e-6, max_val=90e-6, unit='s'),
+                    temp=Quantity(value=qubit_temp, min_val=0.0, max_val=0.12, unit='K')
+                    )
+
+    coupling_strength = 50e6
+    q1q2 = chip.Coupling(
+        name="Q1-Q2",
+        desc="coupling",
+        comment="Coupling qubit 1 to qubit 2",
+        connected=["Q1", "Q2"],
+        strength=Quantity(
+            value=coupling_strength,
+            min_val=-1 * 1e3,
+            max_val=200e6,
+            unit='Hz 2pi'
+        ),
+        hamiltonian_func=hamiltonians.int_XX
+    )
+
+    drive = chip.Drive(
+        name="d1",
+        desc="Drive 1",
+        comment="Drive line 1 on qubit 1",
+        connected=["Q1"],
+        hamiltonian_func=hamiltonians.x_drive
+    )
+    drive2 = chip.Drive(
+        name="d2",
+        desc="Drive 2",
+        comment="Drive line 2 on qubit 2",
+        connected=["Q2"],
+        hamiltonian_func=hamiltonians.x_drive
+    )
+
+    model = Model(
+        [q1, q2],  # Individual, self-contained components
+        [drive, drive2, q1q2],  # Interactions between components
+    )
+
+    model.set_lindbladian(False)
+    model.set_dressed(True)
+
+    sim_res = 100e9  # Resolution for numerical simulation
+    awg_res = 2e9  # Realistic, limited resolution of an AWG
+    v2hz = 1e9
+
+    generator = Generator(
+        devices={
+            "LO": devices.LO(name="lo", resolution=sim_res, outputs=1),
+            "AWG": devices.AWG(name="awg", resolution=awg_res, outputs=1),
+            "DigitalToAnalog": devices.DigitalToAnalog(
+                name="dac", resolution=sim_res, inputs=1, outputs=1
+            ),
+            "Mixer": devices.Mixer(name="mixer", inputs=2, outputs=1),
+            "VoltsToHertz": devices.VoltsToHertz(
+                name="v_to_hz",
+                V_to_Hz=Quantity(value=v2hz, min_val=0.9e9, max_val=1.1e9, unit="Hz/V"),
+                inputs=1,
+                outputs=1,
+            ),
+        },
+        chains={
+            "d1": {
+                "LO": [],
+                "AWG": [],
+                "DigitalToAnalog": ["AWG"],
+                "Mixer": ["LO", "DigitalToAnalog"],
+                "VoltsToHertz": ["Mixer"],
+            },
+            "d2": {
+                "LO": [],
+                "AWG": [],
+                "DigitalToAnalog": ["AWG"],
+                "Mixer": ["LO", "DigitalToAnalog"],
+                "VoltsToHertz": ["Mixer"],
+            },
+        },
+    )
+
+    lo_freq_q1 = freq_q1 + SIDEBAND
+    lo_freq_q2 = freq_q2 + SIDEBAND
+
+    carr_2Q_1 = pulse.Carrier(
+        name="carrier",
+        desc="Carrier on drive 1",
+        params={
+            'freq': Quantity(value=lo_freq_q2, min_val=0.9 * lo_freq_q2, max_val=1.1 * lo_freq_q2, unit='Hz 2pi'),
+            'framechange': Quantity(value=0.0, min_val=-np.pi, max_val=3 * np.pi, unit='rad')
+        }
+    )
+
+    carr_2Q_2 = pulse.Carrier(
+        name="carrier",
+        desc="Carrier on drive 2",
+        params={
+            'freq': Quantity(value=lo_freq_q2, min_val=0.9 * lo_freq_q2, max_val=1.1 * lo_freq_q2, unit='Hz 2pi'),
+            'framechange': Quantity(value=0.0, min_val=-np.pi, max_val=3 * np.pi, unit='rad')
+        }
+    )
+
+    cnot12 = gates.Instruction(
+        name="cnot", targets=[0, 1], t_start=0.0, t_end=t_final, channels=["d1", "d2"],
+        ideal=np.array([
+            [1, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 0, 1],
+            [0, 0, 1, 0]
+        ])
+    )
+
+    cnot12.add_component(carr_2Q_1, "d1")
+    cnot12.add_component(carr_2Q_2, "d2")
+    cnot12.comps["d1"]["carrier"].params["framechange"].set_value(
+        (-SIDEBAND * t_final) * 2 * np.pi % (2 * np.pi)
+    )
+
+    parameter_map = ParameterMap(instructions=[cnot12], model=model, generator=generator)
+    exp = Experiment(pmap=parameter_map)
+
+    exp.set_opt_gates([cnot12.get_key()])
+
+    return exp, cnot12
 
 
 if __name__ == '__main__':
     np.random.seed(0)
 
-    t_final = 7e-9
-    exp, rx90p = setup_rx90_exp(t_final=t_final)
+    # t_final = 7e-9
+    # exp, rx90p = setup_rx90_exp(t_final=t_final)
 
-    gate = rx90p
+    t_final = 45e-9
+    exp, cnot = setup_cnot_exp(t_final=t_final)
+
+    gate = cnot
     gate_name = gate.get_key()
 
     exp.set_opt_gates([gate_name])
@@ -259,10 +415,11 @@ if __name__ == '__main__':
 
     opt_gates = [gate_name]
 
-    gates_per_driver = {'d1': {'gaussian_nonorm': 1}}
+    gates_per_driver = {'d1': {'gaussian_nonorm': 1},
+                        'd2': {'gaussian_nonorm': 0}}
 
     opt_map_params = get_carrier_opt_params(set(gates_per_driver.keys()), gate_name)
-    params_to_exclude_from_opt = {'t_final', 'delta'}
+    params_to_exclude_from_opt = {'t_final', 'delta', 'xy_angle', 'sigma'}
     for driver, driver_envelopes in gates_per_driver.items():
         for env_name, n_envelopes in driver_envelopes.items():
             for n_envelope in range(n_envelopes):
