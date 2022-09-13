@@ -337,6 +337,7 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, cache_dir: str, de
             best_score_per_env[env_name] = best_score
             best_params_per_env[env_name] = best_params_vals
 
+            exp.compute_propagators()
             cache_path = os.path.join(cache_dir, f'{driver}_best_{env_name}.hjson')
             exp.write_config(cache_path)
 
@@ -532,4 +533,4 @@ if __name__ == '__main__':
     parameter_map = ParameterMap(instructions=[gate], model=model, generator=generator)
     exp = Experiment(pmap=parameter_map)
 
-    find_opt_env_for_gate(exp, gate, cache_dir='autopt_cache', debug=True)
+    find_opt_env_for_gate(exp, gate, cache_dir='autopt_cache', debug=False)
