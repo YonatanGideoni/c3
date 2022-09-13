@@ -12,7 +12,7 @@ from c3.experiment import Experiment
 from c3.generator import devices
 from c3.generator.generator import Generator
 from c3.libraries import chip, envelopes, hamiltonians
-from c3.libraries.algorithms import lbfgs
+from c3.libraries.algorithms import lbfgs, cmaes
 from c3.libraries.fidelities import sparse_unitary_infid_set, unitary_infid_set, unitary_infid, \
     amplitude_regularization_cost
 from c3.model import Model
@@ -20,6 +20,7 @@ from c3.optimizers.optimalcontrol import OptimalControl
 from c3.parametermap import ParameterMap
 from c3.signal import pulse, gates
 from c3.signal.pulse import Envelope
+from playground.coord_desc_playground import setup_cnot_exp
 from playground.plot_utils import plot_dynamics
 
 __shared_params = {'amp', 'xy_angle', 'freq_offset', 't_final', 'delta'}
@@ -37,16 +38,16 @@ def calc_exp_fid(exp: Experiment, index: list) -> float:
     return (1 - unitary_infid_set(exp.propagators, exp.pmap.instructions, index, dims)).numpy()
 
 
-def setup_experiment_opt_ctrl(exp: Experiment, fid_func: Callable, maxiter: int = 50) -> OptimalControl:
+def setup_experiment_opt_ctrl(exp: Experiment, fid_func: Callable, maxiter: int = 150) -> OptimalControl:
     log_dir = os.path.join(tempfile.TemporaryDirectory().name, "c3logs")
 
     opt = OptimalControl(
         dir_path=log_dir,
         fid_func=fid_func,
-        fid_subspace=["Q1"],  # TODO-set this automatically
+        fid_subspace=["Q1", 'Q2'],  # TODO-set this automatically
         pmap=exp.pmap,
-        algorithm=lbfgs,
-        options={'maxiter': maxiter, 'disp': True},
+        algorithm=cmaes,
+        options={'maxiter': maxiter, 'spread': 0.7},
     )
 
     opt.set_exp(exp)
@@ -163,7 +164,7 @@ def get_opt_params_conf(driver: str, gate_key: str, env_name, env_to_opt_params:
 
 def get_params_dict(params: set, t_final: float) -> dict:
     def_params = {
-        'amp': Quantity(value=1. + 1e-2 * np.random.rand(), min_val=0.0, max_val=20., unit="V"),
+        'amp': Quantity(value=80. + 1e-1 * np.random.rand(), min_val=0.0, max_val=300., unit="V"),
         't_final': Quantity(value=t_final, min_val=0.5 * t_final, max_val=2.5 * t_final, unit="s"),
         'xy_angle': Quantity(value=0.0, min_val=-0.5 * np.pi, max_val=2.5 * np.pi, unit='rad'),
         'freq_offset': Quantity(value=-SIDEBAND - 3e6, min_val=-56 * 1e6, max_val=-52 * 1e6, unit='Hz 2pi'),
@@ -182,14 +183,15 @@ def get_params_dict(params: set, t_final: float) -> dict:
 
 
 def get_carrier_opt_params(drivers: set, gate_name: str) -> list:
-    carrier_opt_params = {'framechange', 'freq'}
+    carrier_opt_params = {'framechange'}
     return [[(gate_name, driver, 'carrier', carr_param)] for driver in drivers for carr_param in carrier_opt_params]
 
 
-def gen_close_ideals(ideal: np.ndarray, n_to_gen: int, PERT_SIZE: float = 2e-1):
+def gen_close_ideals(ideal: np.ndarray, n_to_gen: int, PERT_SIZE: float = 3e-1):
     perturbed_ideals = []
     for _ in range(n_to_gen):
-        pert_mat = (np.random.rand(*ideal.shape) - 0.5) * PERT_SIZE
+        rand_cmplx_mat = np.sqrt(np.random.rand(*ideal.shape)) * np.exp(2 * np.pi * 1j * np.random.rand(*ideal.shape))
+        pert_mat = rand_cmplx_mat * PERT_SIZE
         nonunitary_pert_ideal = ideal + pert_mat
         u, _, vh = np.linalg.svd(nonunitary_pert_ideal)
         unitary_pert_ideal = u @ vh
@@ -204,10 +206,13 @@ def gen_close_ideals(ideal: np.ndarray, n_to_gen: int, PERT_SIZE: float = 2e-1):
 if __name__ == '__main__':
     np.random.seed(0)
 
-    t_final = 7e-9
-    exp, rx90p = setup_rx90_exp(t_final=t_final)
+    # t_final = 7e-9
+    # exp, rx90p = setup_rx90_exp(t_final=t_final)
 
-    gate = rx90p
+    t_final = 45e-9
+    exp, cnot = setup_cnot_exp(t_final=t_final)
+
+    gate = cnot
     gate_name = gate.get_key()
 
     exp.set_opt_gates([gate_name])
@@ -215,10 +220,11 @@ if __name__ == '__main__':
 
     opt_gates = [gate_name]
 
-    gates_per_driver = {'d1': {'gaussian_nonorm': 3, 'hann': 2}}
+    gates_per_driver = {'d1': {'gaussian_nonorm': 2, 'hann': 1},
+                        'd2': {}}
 
     opt_map_params = get_carrier_opt_params(set(gates_per_driver.keys()), gate_name)
-    params_to_exclude_from_opt = {'t_final', 'delta'}
+    params_to_exclude_from_opt = {'t_final', 'delta', 'sigma'}
     for driver, driver_envelopes in gates_per_driver.items():
         for env_name, n_envelopes in driver_envelopes.items():
             for n_envelope in range(n_envelopes):
@@ -261,10 +267,10 @@ if __name__ == '__main__':
     opt.optimize_controls()
 
     exp.compute_propagators()
-    print(f'F={calc_exp_fid(exp, [0]):.3f}')
+    print(f'F={calc_exp_fid(exp, list(range(len(dims)))):.3f}')
     exp.pmap.print_parameters()
 
-    psi_init = [[0] * 3]
+    psi_init = [[0] * 3 ** 2]
     psi_init[0][0] = 1
     init_state = tf.transpose(tf.constant(psi_init, tf.complex128))
     plot_dynamics(exp, init_state, [gate_name])
