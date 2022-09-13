@@ -234,7 +234,8 @@ def get_params_dict(opt_params: set, t_final: float) -> dict:
 
 
 def get_opt_params_conf(driver: str, gate_key: str, env_name, env_to_opt_params: set) -> list:
-    return [[(gate_key, driver, env_name, param), ] for param in env_to_opt_params]
+    PARAMS_TO_EXCLUDE = {'t_final', 'sigma'}
+    return [[(gate_key, driver, env_name, param), ] for param in env_to_opt_params - PARAMS_TO_EXCLUDE]
 
 
 def get_init_state(exp: Experiment, energy_level: int = None) -> tf.Tensor:
@@ -261,7 +262,7 @@ def opt_single_sig_exp(exp: Experiment) -> tuple:
 
 def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, driver: str = None, env_name: str = None,
                                    gate_name: str = None, debug: bool = False, MIN_AMP: float = 5,
-                                   AMP_RED_FCTR: float = 0.5, MIN_PLOT_FID: float = 0.8) -> tuple:
+                                   AMP_RED_FCTR: float = 0.5, MAX_PLOT_SCORE: float = 0.2) -> tuple:
     best_overall_score = np.inf
     best_overall_params = None
     while (max_amp := amp.get_limits()[1]) > MIN_AMP:
@@ -280,7 +281,7 @@ def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, driver: str =
             print(f'Amplitude:{amp.get_value():.1f}')
             print(f'Max amp.: {max_amp:.1f}')
 
-            if best_score > MIN_PLOT_FID:
+            if best_score < MAX_PLOT_SCORE:
                 # TODO - add more plotting functionality
                 psi_init = get_init_state(exp)
                 plot_dynamics(exp, psi_init, [gate_name])
