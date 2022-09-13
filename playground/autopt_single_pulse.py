@@ -34,7 +34,7 @@ for env_params in ENVELOPES_OPT_PARAMS.values():
         env_params.add(shared_param)
 
 
-def setup_experiment_opt_ctrl(exp: Experiment, maxiter: int = 100) -> OptimalControl:
+def setup_experiment_opt_ctrl(exp: Experiment, maxiter: int = 1) -> OptimalControl:
     # TODO - better set this
     n_qubits = len(exp.pmap.model.dims)
     fid_subspace = [f'Q{i + 1}' for i in range(n_qubits)]
@@ -253,38 +253,38 @@ def opt_single_sig_exp(exp: Experiment) -> tuple:
     exp_opt = setup_experiment_opt_ctrl(exp)
     exp_opt.optimize_controls()
 
-    fid = 1 - exp_opt.current_best_goal
+    best_score = exp_opt.current_best_goal
     best_params = exp_opt.current_best_params
 
-    return fid, best_params
+    return best_score, best_params
 
 
 def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, driver: str = None, env_name: str = None,
-                                   gate_name: str = None, debug: bool = False, MIN_AMP: float = 0.5,
+                                   gate_name: str = None, debug: bool = False, MIN_AMP: float = 5,
                                    AMP_RED_FCTR: float = 0.5, MIN_PLOT_FID: float = 0.8) -> tuple:
-    best_overall_fid = 0
+    best_overall_score = np.inf
     best_overall_params = None
     while (max_amp := amp.get_limits()[1]) > MIN_AMP:
         amp.set_value(max_amp / 2)
 
-        best_fid, best_params_vals = opt_single_sig_exp(exp)
+        best_score, best_params_vals = opt_single_sig_exp(exp)
 
-        if best_fid > best_overall_fid:
-            best_overall_fid = best_fid
+        if best_score < best_overall_score:
+            best_overall_score = best_score
             best_overall_params = best_params_vals
 
         if debug:
             print(f'Driver:   {driver}')
             print(f'Envelope: {env_name}')
-            print(f'Fidelity: {best_fid:.3f}')
+            print(f'Score: {best_score:.3f}')
             print(f'Amplitude:{amp.get_value():.1f}')
             print(f'Max amp.: {max_amp:.1f}')
 
-            if best_fid > MIN_PLOT_FID:
+            if best_score > MIN_PLOT_FID:
                 # TODO - add more plotting functionality
                 psi_init = get_init_state(exp)
                 plot_dynamics(exp, psi_init, [gate_name])
-                plt.title(f'{driver}-{env_name}, F={best_fid:.3f}')
+                plt.title(f'{driver}-{env_name}, F={best_score:.3f}')
 
                 wait_for_not_mouse_press()
 
@@ -292,16 +292,16 @@ def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, driver: str =
 
         amp._set_limits(0, max_amp * AMP_RED_FCTR)
 
-    return best_overall_fid, best_overall_params
+    return best_overall_score, best_overall_params
 
 
 def get_carrier_opt_params(drivers: set, gate_name: str) -> list:
-    carrier_opt_params = {'framechange', 'freq'}
+    carrier_opt_params = {'framechange'}
     return [[(gate_name, driver, 'carrier', carr_param)] for driver in drivers for carr_param in carrier_opt_params]
 
 
 # assumes that the experiment comes with the various devices set up. TODO - make a function that does this
-def find_opt_env_for_gate(exp: Experiment, gate: Instruction, debug: bool = False):
+def find_opt_env_for_gate(exp: Experiment, gate: Instruction, cache_dir: str, debug: bool = False):
     # plan:
     # optimize gate for all driver-envelope combinations
     # if the optimization didn't succeed because of a bad reason - eg. the amplitude reached its upper limit,
@@ -309,7 +309,7 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, debug: bool = Fals
     # specifically for the amplitude - always initialize to zero and start with very high amplitude,
     #   then successively lower based on previous optimization's result as much as possible until the fidelity is
     #   really bad. Cache good solutions
-    best_fid_per_env = {}
+    best_score_per_env = {}
     best_params_per_env = {}
     gate_name = gate.get_key()
     drivers = set(exp.pmap.instructions[gate_name].comps.keys())
@@ -331,10 +331,13 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, debug: bool = Fals
             exp.pmap.set_opt_map(opt_params)
 
             amp = params['amp']
-            best_fid, best_params_vals = find_opt_params_for_single_env(exp, amp, driver, env_name, gate_name, debug)
+            best_score, best_params_vals = find_opt_params_for_single_env(exp, amp, driver, env_name, gate_name, debug)
 
-            best_fid_per_env[env_name] = best_fid
+            best_score_per_env[env_name] = best_score
             best_params_per_env[env_name] = best_params_vals
+
+            cache_path = os.path.join(cache_dir, f'{driver}_best_{env_name}.hjson')
+            exp.write_config(cache_path)
 
             exp.pmap.instructions = {}
 
@@ -517,7 +520,7 @@ if __name__ == '__main__':
         ])
     )
 
-    gate = swap
+    gate = cnot12
 
     gate.add_component(carr_2Q_1, "d1")
     gate.add_component(carr_2Q_2, "d2")
@@ -528,4 +531,4 @@ if __name__ == '__main__':
     parameter_map = ParameterMap(instructions=[gate], model=model, generator=generator)
     exp = Experiment(pmap=parameter_map)
 
-    find_opt_env_for_gate(exp, gate, debug=True)
+    find_opt_env_for_gate(exp, gate, cache_dir='autopt_cache', debug=True)
