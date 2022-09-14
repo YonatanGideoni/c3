@@ -1,5 +1,6 @@
 import itertools
 import os
+import pickle
 import tempfile
 from copy import deepcopy
 from functools import reduce
@@ -254,38 +255,38 @@ def opt_single_sig_exp(exp: Experiment) -> tuple:
     exp_opt = setup_experiment_opt_ctrl(exp)
     exp_opt.optimize_controls()
 
-    best_score = exp_opt.current_best_goal
+    best_infid = exp_opt.current_best_goal
     best_params = exp_opt.current_best_params
 
-    return best_score, best_params
+    return best_infid, best_params
 
 
 def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, driver: str = None, env_name: str = None,
-                                   gate_name: str = None, debug: bool = False, MIN_AMP: float = 5,
-                                   AMP_RED_FCTR: float = 0.5, MAX_PLOT_SCORE: float = 0.2) -> tuple:
-    best_overall_score = np.inf
+                                   gate_name: str = None, debug: bool = False, MIN_AMP: float = 205,
+                                   AMP_RED_FCTR: float = 0.5, MAX_PLOT_INFID: float = 0.2) -> tuple:
+    best_overall_infid = np.inf
     best_overall_params = None
     while (max_amp := amp.get_limits()[1]) > MIN_AMP:
         amp.set_value(max_amp / 2)
 
-        best_score, best_params_vals = opt_single_sig_exp(exp)
+        best_infid, best_params_vals = opt_single_sig_exp(exp)
 
-        if best_score < best_overall_score:
-            best_overall_score = best_score
+        if best_infid < best_overall_infid:
+            best_overall_infid = best_infid
             best_overall_params = best_params_vals
 
         if debug:
             print(f'Driver:   {driver}')
             print(f'Envelope: {env_name}')
-            print(f'Score: {best_score:.3f}')
+            print(f'Infid.:   {best_infid:.3f}')
             print(f'Amplitude:{amp.get_value():.1f}')
             print(f'Max amp.: {max_amp:.1f}')
 
-            if best_score < MAX_PLOT_SCORE:
+            if best_infid < MAX_PLOT_INFID:
                 # TODO - add more plotting functionality
                 psi_init = get_init_state(exp)
                 plot_dynamics(exp, psi_init, [gate_name])
-                plt.title(f'{driver}-{env_name}, F={best_score:.3f}')
+                plt.title(f'{driver}-{env_name}, F={best_infid:.3f}')
 
                 wait_for_not_mouse_press()
 
@@ -293,7 +294,7 @@ def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, driver: str =
 
         amp._set_limits(0, max_amp * AMP_RED_FCTR)
 
-    return best_overall_score, best_overall_params
+    return best_overall_infid, best_overall_params
 
 
 def get_carrier_opt_params(drivers: set, gate_name: str) -> list:
@@ -307,16 +308,17 @@ def get_cached_exp_path(cache_dir: str, driver: str, env_name: str) -> str:
 
 # assumes that the experiment comes with the various devices set up. TODO - make a function that does this
 def find_opt_env_for_gate(exp: Experiment, gate: Instruction, base_opt_params: list, cache_dir: str,
-                          debug: bool = False):
+                          pulse_suffix: str = '', debug: bool = False):
     gate_name = gate.get_key()
     drivers = set(exp.pmap.instructions[gate_name].comps.keys())
-    best_score_per_env = {driver: {} for driver in drivers}
+    best_infid_per_env = {driver: {} for driver in drivers}
     best_params_per_env = {driver: {} for driver in drivers}
     opt_map_params_per_env = {driver: {} for driver in drivers}
     t_final = gate.t_end
 
     for env_name, env_to_opt_params in ENVELOPES_OPT_PARAMS.items():
         envelope_func = envelopes[env_name]
+        env_name = env_name + pulse_suffix
         for driver in drivers:
             params = get_params_dict(env_to_opt_params, t_final)
             env = Envelope(name=env_name, normalize_pulse=True, params=params, shape=envelope_func)
@@ -331,9 +333,9 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, base_opt_params: l
             exp.pmap.set_opt_map(opt_params)
 
             amp = params['amp']
-            best_score, best_params_vals = find_opt_params_for_single_env(exp, amp, driver, env_name, gate_name, debug)
+            best_infid, best_params_vals = find_opt_params_for_single_env(exp, amp, driver, env_name, gate_name, debug)
 
-            best_score_per_env[driver][env_name] = best_score
+            best_infid_per_env[driver][env_name] = best_infid
             best_params_per_env[driver][env_name] = best_params_vals
             opt_map_params_per_env[driver][env_name] = opt_params
 
@@ -345,37 +347,52 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, base_opt_params: l
 
             exp.pmap.instructions = base_instructions
 
-    return best_score_per_env, best_params_per_env, opt_map_params_per_env
+    return best_infid_per_env, best_params_per_env, opt_map_params_per_env
+
+
+def cache_opt_map_params(opt_map_params: list, cache_dir: str):
+    cache_path = os.path.join(cache_dir, 'base_opt_map_params.pkl')
+    with open(cache_path, 'wb') as file:
+        pickle.dump(opt_map_params, file)
+
+
+def read_cached_opt_map_params(cache_dir: str) -> list:
+    cache_path = os.path.join(cache_dir, 'base_opt_map_params.pkl')
+    with open(cache_path, 'rb') as file:
+        return pickle.load(file)
 
 
 def optimize_gate(exp: Experiment, gate: Instruction, cache_dir: str, opt_map_params: list = None,
-                  n_pulses_to_add: int = 1, MAX_SCORE_CONTINUE_RECURSION: float = 0.2, debug: bool = False):
+                  n_pulses_to_add: int = 1, MAX_INFID_CONTINUE_RECURSION: float = 0.2, debug: bool = False):
     if opt_map_params is None:
         gate_name = gate.get_key()
         drivers = set(exp.pmap.instructions[gate_name].comps.keys())
         opt_map_params = get_carrier_opt_params(drivers, gate_name)
 
-    score_per_env, params_per_env, opt_map_params_per_env = find_opt_env_for_gate(exp, gate, opt_map_params, cache_dir,
+    infid_per_env, params_per_env, opt_map_params_per_env = find_opt_env_for_gate(exp, gate, opt_map_params, cache_dir,
+                                                                                  pulse_suffix=str(n_pulses_to_add),
                                                                                   debug=debug)
 
     if n_pulses_to_add == 1:
         return
 
-    for driver, env_scores in score_per_env.items():
+    for driver, env_scores in infid_per_env.items():
         for env_name, env_score in env_scores.items():
+            if env_score > MAX_INFID_CONTINUE_RECURSION:
+                continue
+
             if debug:
                 print(f'{env_name} score: {env_score:.3f}, need to add {n_pulses_to_add - 1} pulses')
 
-            if env_score > MAX_SCORE_CONTINUE_RECURSION:
-                continue
-
             pulse_cache_dir = os.path.join(cache_dir, f'{driver}_{env_name}')
-            os.mkdir(pulse_cache_dir)
+            if not os.path.isdir(pulse_cache_dir):
+                os.mkdir(pulse_cache_dir)
 
             pulse_exp = Experiment()
             pulse_exp.read_config(get_cached_exp_path(cache_dir, driver, env_name))
-            pulse_gate = exp.pmap.instructions[gate.get_key()]
+            pulse_gate = pulse_exp.pmap.instructions[gate.get_key()]
             existing_opt_map_params = deepcopy(opt_map_params_per_env[driver][env_name])
+            cache_opt_map_params(existing_opt_map_params, pulse_cache_dir)
             optimize_gate(pulse_exp, pulse_gate, pulse_cache_dir, existing_opt_map_params, n_pulses_to_add - 1,
                           debug=debug)
 
