@@ -77,6 +77,8 @@ class Envelope(C3obj):
             params[key] = item.asdict()
         return {
             "name": self.name,
+            "use_t_before": self.use_t_before,
+            "normalize_pulse": self.normalize_pulse,
             "c3type": self.__class__.__name__,
             "shape": self.shape.__name__,
             "params": params,
