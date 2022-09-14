@@ -261,11 +261,13 @@ def opt_single_sig_exp(exp: Experiment) -> tuple:
     return best_infid, best_params
 
 
-def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, driver: str = None, env_name: str = None,
-                                   gate_name: str = None, debug: bool = False, MIN_AMP: float = 205,
-                                   AMP_RED_FCTR: float = 0.5, MAX_PLOT_INFID: float = 0.2) -> tuple:
+def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, cache_path: str, driver: str = None,
+                                   env_name: str = None, gate_name: str = None, debug: bool = False, MIN_AMP: float = 5,
+                                   AMP_RED_FCTR: float = 0.5, MAX_PLOT_INFID: float = 0.2,
+                                   MAX_INFID_TO_CACHE: float = 0.02) -> tuple:
     best_overall_infid = np.inf
     best_overall_params = None
+    n_cached = 0
     while (max_amp := amp.get_limits()[1]) > MIN_AMP:
         amp.set_value(max_amp / 2)
 
@@ -291,6 +293,15 @@ def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, driver: str =
                 wait_for_not_mouse_press()
 
                 plt.clf()
+
+        if best_infid < MAX_INFID_TO_CACHE:
+            good_exp_cache_path = cache_path.format(cache_num=n_cached)
+            exp.write_config(good_exp_cache_path)
+            if debug:
+                print('Caching to ' + good_exp_cache_path)
+                print(f'Infid={best_infid:.3f}')
+
+            n_cached += 1
 
         amp._set_limits(0, max_amp * AMP_RED_FCTR)
 
@@ -333,7 +344,12 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, base_opt_params: l
             exp.pmap.set_opt_map(opt_params)
 
             amp = params['amp']
-            best_infid, best_params_vals = find_opt_params_for_single_env(exp, amp, driver, env_name, gate_name, debug)
+            good_res_cache_dir = os.path.join(cache_dir, 'good_infid_exps')
+            if not os.path.isdir(good_res_cache_dir):
+                os.mkdir(good_res_cache_dir)
+            good_res_cache_path = os.path.join(good_res_cache_dir, f'd{driver}_{env_name}_' + '{cache_num}.hjson')
+            best_infid, best_params_vals = find_opt_params_for_single_env(exp, amp, good_res_cache_path, driver,
+                                                                          env_name, gate_name, debug)
 
             best_infid_per_env[driver][env_name] = best_infid
             best_params_per_env[driver][env_name] = best_params_vals
@@ -382,7 +398,8 @@ def optimize_gate(exp: Experiment, gate: Instruction, cache_dir: str, opt_map_pa
                 continue
 
             if debug:
-                print(f'{env_name} score: {env_score:.3f}, need to add {n_pulses_to_add - 1} pulses')
+                print(f'{env_name} on driver {driver} infidelity: {env_score:.3f}, '
+                      f'need to add {n_pulses_to_add - 1} pulses')
 
             pulse_cache_dir = os.path.join(cache_dir, f'{driver}_{env_name}')
             if not os.path.isdir(pulse_cache_dir):
