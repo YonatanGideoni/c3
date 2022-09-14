@@ -1,4 +1,5 @@
 import itertools
+from functools import reduce
 from time import time
 from typing import List
 
@@ -8,6 +9,18 @@ from matplotlib import pyplot as plt
 
 from c3.experiment import Experiment
 from c3.generator.devices import AWG
+
+
+def get_init_state(exp: Experiment, energy_level: int = None) -> tf.Tensor:
+    dims = exp.pmap.model.dims
+    n_lvls = reduce(lambda x, y: x * y, dims)
+
+    if energy_level is None:
+        energy_level = 0
+
+    psi_init = [[0] * n_lvls]
+    psi_init[0][energy_level] = 1
+    return tf.transpose(tf.constant(psi_init, tf.complex128))
 
 
 def plot_dynamics(exp, psi_init, seq, disp_legend: bool = False):
