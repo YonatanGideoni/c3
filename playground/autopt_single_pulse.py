@@ -34,7 +34,7 @@ for env_params in ENVELOPES_OPT_PARAMS.values():
         env_params.add(shared_param)
 
 
-def setup_experiment_opt_ctrl(exp: Experiment, maxiter: int = 1) -> OptimalControl:
+def setup_experiment_opt_ctrl(exp: Experiment, maxiter: int = 50) -> OptimalControl:
     # TODO - better set this
     n_qubits = len(exp.pmap.model.dims)
     fid_subspace = [f'Q{i + 1}' for i in range(n_qubits)]
@@ -301,15 +301,14 @@ def get_carrier_opt_params(drivers: set, gate_name: str) -> list:
     return [[(gate_name, driver, 'carrier', carr_param)] for driver in drivers for carr_param in carrier_opt_params]
 
 
+def get_cached_exp_path(cache_dir: str, drivers_and_envs: list) -> str:
+    driver_env_str_desc = "_".join(map(lambda driver_and_env: f"{driver_and_env[0]}_{driver_and_env[1]}",
+                                       drivers_and_envs))
+    return os.path.join(cache_dir, f'best_{driver_env_str_desc}.hjson')
+
+
 # assumes that the experiment comes with the various devices set up. TODO - make a function that does this
 def find_opt_env_for_gate(exp: Experiment, gate: Instruction, cache_dir: str, debug: bool = False):
-    # plan:
-    # optimize gate for all driver-envelope combinations
-    # if the optimization didn't succeed because of a bad reason - eg. the amplitude reached its upper limit,
-    #   not enough iterations, etc., rerun it with looser limits
-    # specifically for the amplitude - always initialize to zero and start with very high amplitude,
-    #   then successively lower based on previous optimization's result as much as possible until the fidelity is
-    #   really bad. Cache good solutions
     best_score_per_env = {}
     best_params_per_env = {}
     gate_name = gate.get_key()
@@ -323,9 +322,10 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, cache_dir: str, de
             params = get_params_dict(env_to_opt_params, t_final)
             env = Envelope(name=env_name, normalize_pulse=True, params=params, shape=envelope_func)
 
-            single_env_gate = deepcopy(gate)
-            single_env_gate.add_component(env, driver)
-            exp.pmap.instructions = {gate_name: single_env_gate}
+            gate_with_extra_env = deepcopy(gate)
+            gate_with_extra_env.add_component(env, driver)
+            base_instructions = deepcopy(exp.pmap.instructions)
+            exp.pmap.instructions.update({gate_name: gate_with_extra_env})
 
             opt_params = get_opt_params_conf(driver, gate_name, env_name, env_to_opt_params) + carrier_opt_params
             exp.pmap.update_parameters()
@@ -337,11 +337,15 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, cache_dir: str, de
             best_score_per_env[env_name] = best_score
             best_params_per_env[env_name] = best_params_vals
 
+            exp.pmap.set_parameters(best_params_vals, extend_bounds=True)
+            exp.pmap.update_parameters()
             exp.compute_propagators()
-            cache_path = os.path.join(cache_dir, f'{driver}_best_{env_name}.hjson')
+            cache_path = get_cached_exp_path(cache_dir, [(driver, env_name)])
             exp.write_config(cache_path)
 
-            exp.pmap.instructions = {}
+            exp.pmap.instructions = base_instructions
+
+    return best_score_per_env, best_params_per_env
 
 
 if __name__ == '__main__':
@@ -533,4 +537,4 @@ if __name__ == '__main__':
     parameter_map = ParameterMap(instructions=[gate], model=model, generator=generator)
     exp = Experiment(pmap=parameter_map)
 
-    find_opt_env_for_gate(exp, gate, cache_dir='autopt_cache', debug=False)
+    find_opt_env_for_gate(exp, gate, cache_dir='autopt_cache', debug=True)
