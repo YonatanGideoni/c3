@@ -357,7 +357,7 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, base_opt_params: l
             good_res_cache_dir = os.path.join(cache_dir, 'good_infid_exps')
             if not os.path.isdir(good_res_cache_dir):
                 os.mkdir(good_res_cache_dir)
-            good_res_cache_path = os.path.join(good_res_cache_dir, f'd{driver}_{env_name}_' + '{cache_num}.hjson')
+            good_res_cache_path = os.path.join(good_res_cache_dir, f'{driver}_{env_name}_' + '{cache_num}.hjson')
             best_infid, best_params_vals = find_opt_params_for_single_env(exp, amp, good_res_cache_path, driver,
                                                                           env_name, gate_name, debug)
 
