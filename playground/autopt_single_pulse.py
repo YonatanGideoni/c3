@@ -317,6 +317,16 @@ def get_cached_exp_path(cache_dir: str, driver: str, env_name: str) -> str:
     return os.path.join(cache_dir, f'best_{driver}_{env_name}.hjson')
 
 
+def cache_exp(exp: Experiment, cache_dir: str, driver, env_name: str, params_vals: list = None):
+    if params_vals is not None:
+        exp.pmap.set_parameters(params_vals, extend_bounds=True)
+
+    exp.pmap.update_parameters()
+    exp.compute_propagators()
+    cache_path = get_cached_exp_path(cache_dir, driver, env_name)
+    exp.write_config(cache_path)
+
+
 # assumes that the experiment comes with the various devices set up. TODO - make a function that does this
 def find_opt_env_for_gate(exp: Experiment, gate: Instruction, base_opt_params: list, cache_dir: str,
                           pulse_suffix: str = '', debug: bool = False):
@@ -355,11 +365,7 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, base_opt_params: l
             best_params_per_env[driver][env_name] = best_params_vals
             opt_map_params_per_env[driver][env_name] = opt_params
 
-            exp.pmap.set_parameters(best_params_vals, extend_bounds=True)
-            exp.pmap.update_parameters()
-            exp.compute_propagators()
-            cache_path = get_cached_exp_path(cache_dir, driver, env_name)
-            exp.write_config(cache_path)
+            cache_exp(exp, cache_dir, driver, env_name, best_params_vals)
 
             exp.pmap.instructions = base_instructions
 
