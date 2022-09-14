@@ -306,14 +306,15 @@ def get_cached_exp_path(cache_dir: str, driver: str, env_name: str) -> str:
 
 
 # assumes that the experiment comes with the various devices set up. TODO - make a function that does this
-def find_opt_env_for_gate(exp: Experiment, gate: Instruction, cache_dir: str, debug: bool = False):
+def find_opt_env_for_gate(exp: Experiment, gate: Instruction, base_opt_params: list, cache_dir: str,
+                          debug: bool = False):
     gate_name = gate.get_key()
     drivers = set(exp.pmap.instructions[gate_name].comps.keys())
     best_score_per_env = {driver: {} for driver in drivers}
     best_params_per_env = {driver: {} for driver in drivers}
+    opt_map_params_per_env = {driver: {} for driver in drivers}
     t_final = gate.t_end
 
-    carrier_opt_params = get_carrier_opt_params(drivers, gate_name)
     for env_name, env_to_opt_params in ENVELOPES_OPT_PARAMS.items():
         envelope_func = envelopes[env_name]
         for driver in drivers:
@@ -325,7 +326,7 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, cache_dir: str, de
             base_instructions = deepcopy(exp.pmap.instructions)
             exp.pmap.instructions.update({gate_name: gate_with_extra_env})
 
-            opt_params = get_opt_params_conf(driver, gate_name, env_name, env_to_opt_params) + carrier_opt_params
+            opt_params = get_opt_params_conf(driver, gate_name, env_name, env_to_opt_params) + base_opt_params
             exp.pmap.update_parameters()
             exp.pmap.set_opt_map(opt_params)
 
@@ -334,6 +335,7 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, cache_dir: str, de
 
             best_score_per_env[driver][env_name] = best_score
             best_params_per_env[driver][env_name] = best_params_vals
+            opt_map_params_per_env[driver][env_name] = opt_params
 
             exp.pmap.set_parameters(best_params_vals, extend_bounds=True)
             exp.pmap.update_parameters()
@@ -343,12 +345,18 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, cache_dir: str, de
 
             exp.pmap.instructions = base_instructions
 
-    return best_score_per_env, best_params_per_env
+    return best_score_per_env, best_params_per_env, opt_map_params_per_env
 
 
-def optimize_gate(exp: Experiment, gate: Instruction, cache_dir: str, n_pulses_to_add: int = 1,
-                  MAX_SCORE_CONTINUE_RECURSION: float = 0.2, debug: bool = False):
-    score_per_env, params_per_env = find_opt_env_for_gate(exp, gate, cache_dir, debug=debug)
+def optimize_gate(exp: Experiment, gate: Instruction, cache_dir: str, opt_map_params: list = None,
+                  n_pulses_to_add: int = 1, MAX_SCORE_CONTINUE_RECURSION: float = 0.2, debug: bool = False):
+    if opt_map_params is None:
+        gate_name = gate.get_key()
+        drivers = set(exp.pmap.instructions[gate_name].comps.keys())
+        opt_map_params = get_carrier_opt_params(drivers, gate_name)
+
+    score_per_env, params_per_env, opt_map_params_per_env = find_opt_env_for_gate(exp, gate, opt_map_params, cache_dir,
+                                                                                  debug=debug)
 
     if n_pulses_to_add == 1:
         return
@@ -356,7 +364,7 @@ def optimize_gate(exp: Experiment, gate: Instruction, cache_dir: str, n_pulses_t
     for driver, env_scores in score_per_env.items():
         for env_name, env_score in env_scores.items():
             if debug:
-                print(f'{env_name} score: {score_per_env:.3f}, need to add {n_pulses_to_add - 1} pulses')
+                print(f'{env_name} score: {env_score:.3f}, need to add {n_pulses_to_add - 1} pulses')
 
             if env_score > MAX_SCORE_CONTINUE_RECURSION:
                 continue
@@ -367,7 +375,9 @@ def optimize_gate(exp: Experiment, gate: Instruction, cache_dir: str, n_pulses_t
             pulse_exp = Experiment()
             pulse_exp.read_config(get_cached_exp_path(cache_dir, driver, env_name))
             pulse_gate = exp.pmap.instructions[gate.get_key()]
-            optimize_gate(pulse_exp, pulse_gate, pulse_cache_dir, n_pulses_to_add - 1, debug=debug)
+            existing_opt_map_params = deepcopy(opt_map_params_per_env[driver][env_name])
+            optimize_gate(pulse_exp, pulse_gate, pulse_cache_dir, existing_opt_map_params, n_pulses_to_add - 1,
+                          debug=debug)
 
 
 if __name__ == '__main__':
