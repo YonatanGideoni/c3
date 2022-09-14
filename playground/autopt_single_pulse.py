@@ -301,18 +301,16 @@ def get_carrier_opt_params(drivers: set, gate_name: str) -> list:
     return [[(gate_name, driver, 'carrier', carr_param)] for driver in drivers for carr_param in carrier_opt_params]
 
 
-def get_cached_exp_path(cache_dir: str, drivers_and_envs: list) -> str:
-    driver_env_str_desc = "_".join(map(lambda driver_and_env: f"{driver_and_env[0]}_{driver_and_env[1]}",
-                                       drivers_and_envs))
-    return os.path.join(cache_dir, f'best_{driver_env_str_desc}.hjson')
+def get_cached_exp_path(cache_dir: str, driver: str, env_name: str) -> str:
+    return os.path.join(cache_dir, f'best_{driver}_{env_name}.hjson')
 
 
 # assumes that the experiment comes with the various devices set up. TODO - make a function that does this
 def find_opt_env_for_gate(exp: Experiment, gate: Instruction, cache_dir: str, debug: bool = False):
-    best_score_per_env = {}
-    best_params_per_env = {}
     gate_name = gate.get_key()
     drivers = set(exp.pmap.instructions[gate_name].comps.keys())
+    best_score_per_env = {driver: {} for driver in drivers}
+    best_params_per_env = {driver: {} for driver in drivers}
     t_final = gate.t_end
 
     carrier_opt_params = get_carrier_opt_params(drivers, gate_name)
@@ -334,18 +332,42 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, cache_dir: str, de
             amp = params['amp']
             best_score, best_params_vals = find_opt_params_for_single_env(exp, amp, driver, env_name, gate_name, debug)
 
-            best_score_per_env[env_name] = best_score
-            best_params_per_env[env_name] = best_params_vals
+            best_score_per_env[driver][env_name] = best_score
+            best_params_per_env[driver][env_name] = best_params_vals
 
             exp.pmap.set_parameters(best_params_vals, extend_bounds=True)
             exp.pmap.update_parameters()
             exp.compute_propagators()
-            cache_path = get_cached_exp_path(cache_dir, [(driver, env_name)])
+            cache_path = get_cached_exp_path(cache_dir, driver, env_name)
             exp.write_config(cache_path)
 
             exp.pmap.instructions = base_instructions
 
     return best_score_per_env, best_params_per_env
+
+
+def optimize_gate(exp: Experiment, gate: Instruction, cache_dir: str, n_pulses_to_add: int = 1,
+                  MAX_SCORE_CONTINUE_RECURSION: float = 0.2, debug: bool = False):
+    score_per_env, params_per_env = find_opt_env_for_gate(exp, gate, cache_dir, debug=debug)
+
+    if n_pulses_to_add == 1:
+        return
+
+    for driver, env_scores in score_per_env.items():
+        for env_name, env_score in env_scores.items():
+            if debug:
+                print(f'{env_name} score: {score_per_env:.3f}, need to add {n_pulses_to_add - 1} pulses')
+
+            if env_score > MAX_SCORE_CONTINUE_RECURSION:
+                continue
+
+            pulse_cache_dir = os.path.join(cache_dir, f'{driver}_{env_name}')
+            os.mkdir(pulse_cache_dir)
+
+            pulse_exp = Experiment()
+            pulse_exp.read_config(get_cached_exp_path(cache_dir, driver, env_name))
+            pulse_gate = exp.pmap.instructions[gate.get_key()]
+            optimize_gate(pulse_exp, pulse_gate, pulse_cache_dir, n_pulses_to_add - 1, debug=debug)
 
 
 if __name__ == '__main__':
@@ -537,4 +559,4 @@ if __name__ == '__main__':
     parameter_map = ParameterMap(instructions=[gate], model=model, generator=generator)
     exp = Experiment(pmap=parameter_map)
 
-    find_opt_env_for_gate(exp, gate, cache_dir='autopt_cache', debug=True)
+    optimize_gate(exp, gate, cache_dir='autopt_cache', n_pulses_to_add=2, debug=True)
