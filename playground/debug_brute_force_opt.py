@@ -4,7 +4,8 @@ from matplotlib import pyplot as plt
 
 from c3.experiment import Experiment
 from playground.brute_force_opt_gate import read_cached_opt_map_params, find_opt_env_for_gate, calc_exp_fid
-from playground.plot_utils import plot_dynamics, get_init_state, wait_for_not_mouse_press, plot_signal
+from playground.plot_utils import plot_dynamics, get_init_state, wait_for_not_mouse_press, plot_signal, \
+    plot_splitted_population
 
 
 def run_gate_exp_opt(exp_path: str, exp_cache_dir, debug_cache_dir='debug_cache', gate_name='cnot[0, 1]'):
@@ -37,6 +38,9 @@ def plot_exps_in_dir(dir_path: str):
         gate_name = gate.get_key()
         plot_dynamics(exp, init_state, [gate_name], disp_legend=True)
         plt.title(f'{gate_name}, F={fid:.3f}')
+        plt.pause(1e-12)
+
+        plot_splitted_population(exp, init_state, [gate_name])
         plt.pause(1e-12)
 
         drivers_signals = gate.comps

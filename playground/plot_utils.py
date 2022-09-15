@@ -180,7 +180,6 @@ def plot_splitted_population(
         ax.grid()
 
     plt.tight_layout()
-    plt.show()
 
 
 def wait_for_not_mouse_press(timeout: float = 10.):
