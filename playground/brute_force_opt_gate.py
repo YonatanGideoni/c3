@@ -127,7 +127,7 @@ def opt_single_sig_exp(exp: Experiment) -> tuple:
 
 def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, cache_path: str, driver: str = None,
                                    env_name: str = None, gate_name: str = None, debug: bool = False, MIN_AMP: float = 5,
-                                   AMP_RED_FCTR: float = 0.5, MAX_PLOT_INFID: float = 0.2,
+                                   AMP_RED_FCTR: float = 0.5, MAX_PLOT_INFID: float = 0.1,
                                    MAX_INFID_TO_CACHE: float = 0.02) -> tuple:
     best_overall_infid = np.inf
     best_overall_params = None
@@ -156,7 +156,7 @@ def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, cache_path: s
 
                 wait_for_not_mouse_press()
 
-                plt.clf()
+                plt.close()
 
         if best_infid < MAX_INFID_TO_CACHE:
             good_exp_cache_path = cache_path.format(cache_num=n_cached)
@@ -285,7 +285,7 @@ def optimize_gate(exp: Experiment, gate: Instruction, cache_dir: str, opt_map_pa
 
 
 if __name__ == '__main__':
-    qubit_lvls = 3
+    qubit_lvls = 4
     freq_q1 = 5e9
     anhar_q1 = -210e6
     t1_q1 = 27e-6
@@ -462,7 +462,14 @@ if __name__ == '__main__':
         ])
     )
 
-    gate = cnot12
+    # gate = cnot12
+    # dir = 'low_anharm_cx'
+
+    # gate = cy
+    # dir = 'cy_brute_force_cache'
+
+    # gate = cz
+    # dir = 'cz_brute_force_cache'
 
     gate.add_component(carr_2Q_1, "d1")
     gate.add_component(carr_2Q_2, "d2")
@@ -473,4 +480,4 @@ if __name__ == '__main__':
     parameter_map = ParameterMap(instructions=[gate], model=model, generator=generator)
     exp = Experiment(pmap=parameter_map)
 
-    optimize_gate(exp, gate, cache_dir='autopt_cache', n_pulses_to_add=2, debug=True)
+    optimize_gate(exp, gate, cache_dir=dir, n_pulses_to_add=2, debug=True)
