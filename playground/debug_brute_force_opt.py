@@ -4,7 +4,7 @@ from matplotlib import pyplot as plt
 
 from c3.experiment import Experiment
 from playground.brute_force_opt_gate import read_cached_opt_map_params, find_opt_env_for_gate, calc_exp_fid
-from playground.plot_utils import plot_dynamics, get_init_state, wait_for_not_mouse_press
+from playground.plot_utils import plot_dynamics, get_init_state, wait_for_not_mouse_press, plot_signal
 
 
 def run_gate_exp_opt(exp_path: str, exp_cache_dir, debug_cache_dir='debug_cache', gate_name='cnot[0, 1]'):
@@ -37,10 +37,18 @@ def plot_exps_in_dir(dir_path: str):
         gate_name = gate.get_key()
         plot_dynamics(exp, init_state, [gate_name], disp_legend=True)
         plt.title(f'{gate_name}, F={fid:.3f}')
+        plt.pause(1e-12)
+
+        drivers_signals = gate.comps
+        drivers_signals = {driver: {sig_name: sig for sig_name, sig in signals.items() if 'carrier' not in sig_name}
+                           for driver, signals in drivers_signals.items()}
+        awg = exp.pmap.generator.devices['AWG']
+        t_final = gate.t_end
+        plot_signal(awg, drivers_signals, t_final)
 
         wait_for_not_mouse_press(timeout=30)
 
-        plt.close()
+        plt.close('all')
 
 
 def plot_good_results(base_dir: str):
@@ -61,4 +69,4 @@ if __name__ == '__main__':
     #
     # run_gate_exp_opt(exp_path, exp_cache_dir)
 
-    plot_good_results('autopt_cache')
+    plot_good_results('cy_brute_force_cache')
