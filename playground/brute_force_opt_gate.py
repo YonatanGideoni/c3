@@ -9,6 +9,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 import c3.generator.devices as devices
+from alex_system.four_level_transmons import custom_gates
 from alex_system.four_level_transmons.DataOutput import DataOutput
 from alex_system.four_level_transmons.utilities import createQubits, createChainCouplings, createDrives, \
     createGenerator2LOs
@@ -550,7 +551,7 @@ def get_ccx_system(t_final=100e-9, qubit_lvls=4):
     return gate, dir, model, generator
 
 
-def get_alex_system(output_dir='alex_sys_output_dir'):
+def get_alex_system(output_dir='alex_sys_output_dir', t_final=500e-9):
     qubit_levels = [4, 4]
     qubit_frequencies = [5e9, 5e9]
     anharmonicities = [-300e6, -300e6]
@@ -559,6 +560,8 @@ def get_alex_system(output_dir='alex_sys_output_dir'):
     qubit_temps = 50e-3
     couplingStrength = 20e6
     isDressed = True
+    sim_res = 50e9
+    awg_res = 2e9
 
     print("qubits frequencies: ", qubit_frequencies, "anharmonicities: ", anharmonicities,
           "coupling: ", couplingStrength)
@@ -579,8 +582,6 @@ def get_alex_system(output_dir='alex_sys_output_dir'):
                 level_labels.append(s)
                 level_labels_with_leakage.append(s)
                 level_labels_short.append(f"{i},{j}")
-    level_labels_transmon = [f"${x}$" for x in level_labels_transmon]
-    output = DataOutput(output_dir, file_suffix='before')
 
     qubits = createQubits(qubit_levels, qubit_frequencies, anharmonicities,
                           t1s, t2stars, qubit_temps)
@@ -594,6 +595,60 @@ def get_alex_system(output_dir='alex_sys_output_dir'):
     model.set_FR(False)  # change?
 
     generator = createGenerator2LOs(drives, sim_res=sim_res, awg_res=awg_res)
+
+    # Envelopes and carriers
+    carrier_freqs = [
+        [40e6, 563e6],
+        [121e6, 644e6]
+    ]
+
+    carrier_framechange = [
+        [0.01, 0.01],
+        [0.01, 0.01]
+    ]
+
+    envelopesForDrive = {d.name: [] for d in drives}
+    carriers = []
+    carriersForDrive = {d.name: [] for d in drives}
+
+    # create carriers and envelopes
+    for idx in [0, 1]:
+        for i in range(0, len(carrier_freqs[idx])):
+            carrier_parameters = {
+                "freq": Quantity(value=carrier_freqs[idx][i], min_val=0.98 * carrier_freqs[idx][i],
+                                 max_val=1.02 * carrier_freqs[idx][i], unit="Hz 2pi"),
+                "framechange": Quantity(value=carrier_framechange[idx][i], min_val=-np.pi, max_val=3 * np.pi,
+                                        unit="rad"),
+            }
+            carrier = pulse.Carrier(
+                name=f"carrier_{drives[idx].name}_{i + 1}",
+                desc="Frequency of the local oscillator",
+                params=carrier_parameters,
+            )
+            carriers.append(carrier)
+            carriersForDrive[drives[idx].name].append(carrier)
+
+    print("carrier: ", [[carrier.params["freq"] for carrier in carriers] for carriers in carriersForDrive.values()])
+    print("amp: ", [[env.params["amp"] for env in envelopes] for envelopes in envelopesForDrive.values()])
+
+    ideal_gate = custom_gates.GATE_iSWAP_t1q2_t2q2
+
+    gate = gates.Instruction(
+        name="iswap_t1q2_t2q2",
+        targets=[0, 1],
+        t_start=0.0,
+        t_end=t_final,
+        channels=[d.name for d in drives],
+        ideal=ideal_gate,
+    )
+
+    for drive in drives:
+        for env in envelopesForDrive[drive.name]:
+            gate.add_component(deepcopy(env), drive.name)
+        for carrier in carriersForDrive[drive.name]:
+            gate.add_component(deepcopy(carrier), drive.name)
+
+    return gate, output_dir, model, generator
 
 
 if __name__ == '__main__':
