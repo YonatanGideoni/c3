@@ -319,6 +319,234 @@ def optimize_gate(exp: Experiment, gate: Instruction, cache_dir: str, opt_map_pa
                           debug=debug)
 
 
+def get_ccx_system(t_final=100e-9, qubit_lvls=4):
+    freq_q1 = 5e9
+    anhar_q1 = -210e6
+    t1_q1 = 27e-6
+    t2star_q1 = 39e-6
+    qubit_temp = 50e-3
+
+    q1 = chip.Qubit(
+        name="Q1",
+        desc="Qubit 1",
+        freq=Quantity(value=freq_q1, min_val=4.995e9, max_val=5.005e9, unit='Hz 2pi'),
+        anhar=Quantity(value=anhar_q1, min_val=-380e6, max_val=-120e6, unit='Hz 2pi'),
+        hilbert_dim=qubit_lvls,
+        t1=Quantity(value=t1_q1, min_val=1e-6, max_val=90e-6, unit='s'),
+        t2star=Quantity(value=t2star_q1, min_val=10e-6, max_val=90e-3, unit='s'),
+        temp=Quantity(value=qubit_temp, min_val=0.0, max_val=0.12, unit='K')
+    )
+
+    freq_q2 = 5.3e9
+    anhar_q2 = -240e6
+    t1_q2 = 23e-6
+    t2star_q2 = 31e-6
+    q2 = chip.Qubit(
+        name="Q2",
+        desc="Qubit 2",
+        freq=Quantity(value=freq_q2, min_val=5.295e9, max_val=5.305e9, unit='Hz 2pi'),
+        anhar=Quantity(value=anhar_q2, min_val=-380e6, max_val=-120e6, unit='Hz 2pi'),
+        hilbert_dim=qubit_lvls,
+        t1=Quantity(value=t1_q2, min_val=1e-6, max_val=90e-6, unit='s'),
+        t2star=Quantity(value=t2star_q2, min_val=10e-6, max_val=90e-6, unit='s'),
+        temp=Quantity(value=qubit_temp, min_val=0.0, max_val=0.12, unit='K')
+    )
+
+    freq_q3 = 5.6e9
+    anhar_q3 = -240e6
+    t1_q3 = 23e-6
+    t2star_q3 = 31e-6
+    q3 = chip.Qubit(
+        name="Q3",
+        desc="Qubit 3",
+        freq=Quantity(value=freq_q3, min_val=5.595e9, max_val=5.605e9, unit='Hz 2pi'),
+        anhar=Quantity(value=anhar_q3, min_val=-380e6, max_val=-120e6, unit='Hz 2pi'),
+        hilbert_dim=qubit_lvls,
+        t1=Quantity(value=t1_q3, min_val=1e-6, max_val=90e-6, unit='s'),
+        t2star=Quantity(value=t2star_q3, min_val=10e-6, max_val=90e-6, unit='s'),
+        temp=Quantity(value=qubit_temp, min_val=0.0, max_val=0.12, unit='K')
+    )
+
+    coupling_strength = 50e6
+    q1q2 = chip.Coupling(
+        name="Q1-Q2",
+        desc="coupling",
+        comment="Coupling qubit 1 to qubit 2",
+        connected=["Q1", "Q2"],
+        strength=Quantity(
+            value=coupling_strength,
+            min_val=-1 * 1e3,
+            max_val=200e6,
+            unit='Hz 2pi'
+        ),
+        hamiltonian_func=hamiltonians.int_XX
+    )
+
+    q1q3 = chip.Coupling(
+        name="Q1-Q3",
+        desc="coupling",
+        comment="Coupling qubit 1 to qubit 3",
+        connected=["Q1", "Q3"],
+        strength=Quantity(
+            value=coupling_strength,
+            min_val=-1 * 1e3,
+            max_val=200e6,
+            unit='Hz 2pi'
+        ),
+        hamiltonian_func=hamiltonians.int_XX
+    )
+
+    q2q3 = chip.Coupling(
+        name="Q2-Q3",
+        desc="coupling",
+        comment="Coupling qubit 2 to qubit 3",
+        connected=["Q2", "Q3"],
+        strength=Quantity(
+            value=coupling_strength,
+            min_val=-1 * 1e3,
+            max_val=200e6,
+            unit='Hz 2pi'
+        ),
+        hamiltonian_func=hamiltonians.int_XX
+    )
+
+    drive1 = chip.Drive(
+        name="d1",
+        desc="Drive 1",
+        comment="Drive line 1 on qubit 1",
+        connected=["Q1"],
+        hamiltonian_func=hamiltonians.x_drive
+    )
+    drive2 = chip.Drive(
+        name="d2",
+        desc="Drive 2",
+        comment="Drive line 2 on qubit 2",
+        connected=["Q2"],
+        hamiltonian_func=hamiltonians.x_drive
+    )
+
+    drive3 = chip.Drive(
+        name="d3",
+        desc="Drive 3",
+        comment="Drive line 3 on qubit 3",
+        connected=["Q3"],
+        hamiltonian_func=hamiltonians.x_drive
+    )
+
+    model = Model(
+        [q1, q2, q3],  # Individual, self-contained components
+        [drive1, drive2, drive3, q1q2, q1q3, q2q3],  # Interactions between components
+    )
+    model.set_lindbladian(False)
+    model.set_dressed(True)
+
+    sim_res = 100e9  # Resolution for numerical simulation
+    awg_res = 2e9  # Realistic, limited resolution of an AWG
+    v2hz = 1e9
+
+    lo = devices.LO(name='lo', resolution=sim_res)
+    awg = devices.AWG(name='awg', resolution=awg_res)
+    mixer = devices.Mixer(name='mixer')
+    dig_to_an = devices.DigitalToAnalog(name="dac", resolution=sim_res)
+    v_to_hz = devices.VoltsToHertz(
+        name='v_to_hz',
+        V_to_Hz=Quantity(value=v2hz, min_val=0.9e9, max_val=1.1e9, unit='Hz/V')
+    )
+
+    generator = Generator(
+        devices={
+            "LO": lo,
+            "AWG": awg,
+            "DigitalToAnalog": dig_to_an,
+            "Mixer": mixer,
+            "VoltsToHertz": v_to_hz
+        },
+        chains={
+            "d1": {
+                "LO": [],
+                "AWG": [],
+                "DigitalToAnalog": ["AWG"],
+                "Mixer": ["LO", "DigitalToAnalog"],
+                "VoltsToHertz": ["Mixer"],
+            },
+            "d2": {
+                "LO": [],
+                "AWG": [],
+                "DigitalToAnalog": ["AWG"],
+                "Mixer": ["LO", "DigitalToAnalog"],
+                "VoltsToHertz": ["Mixer"],
+            },
+            "d3": {
+                "LO": [],
+                "AWG": [],
+                "DigitalToAnalog": ["AWG"],
+                "Mixer": ["LO", "DigitalToAnalog"],
+                "VoltsToHertz": ["Mixer"],
+            }
+        }
+    )
+
+    lo_freq_q1 = freq_q1 + SIDEBAND
+    lo_freq_q2 = freq_q2 + SIDEBAND
+    lo_freq_q3 = freq_q3 + SIDEBAND
+
+    carr_3Q_1 = pulse.Carrier(
+        name="carrier",
+        desc="Carrier on drive 1",
+        params={
+            'freq': Quantity(value=lo_freq_q3, min_val=0.8 * lo_freq_q1, max_val=1.2 * lo_freq_q3, unit='Hz 2pi'),
+            'framechange': Quantity(value=0.0, min_val=-np.pi, max_val=3 * np.pi, unit='rad')
+        }
+    )
+
+    carr_3Q_2 = pulse.Carrier(
+        name="carrier",
+        desc="Carrier on drive 2",
+        params={
+            'freq': Quantity(value=lo_freq_q3, min_val=0.8 * lo_freq_q1, max_val=1.2 * lo_freq_q3, unit='Hz 2pi'),
+            'framechange': Quantity(value=0.0, min_val=-np.pi, max_val=3 * np.pi, unit='rad')
+        }
+    )
+
+    carr_3Q_3 = pulse.Carrier(
+        name="carrier",
+        desc="Carrier on drive 3",
+        params={
+            'freq': Quantity(value=lo_freq_q3, min_val=0.8 * lo_freq_q1, max_val=1.2 * lo_freq_q3, unit='Hz 2pi'),
+            'framechange': Quantity(value=0.0, min_val=-np.pi, max_val=3 * np.pi, unit='rad')
+        }
+    )
+
+    ccnot = gates.Instruction(
+        name="ccnot", targets=[0, 1, 2], t_start=0.0, t_end=t_final, channels=["d1", "d2", "d3"],
+        ideal=np.array([
+            [1, 0, 0, 0, 0, 0, 0, 0],
+            [0, 1, 0, 0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0, 0, 0],
+            [0, 0, 0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 1],
+            [0, 0, 0, 0, 0, 0, 1, 0],
+        ])
+    )
+
+    gate = ccnot
+    dir = f'toffoli_{t_final * 1e9:.0f}ns_trial'
+
+    gate.add_component(carr_3Q_1, "d1")
+    gate.add_component(carr_3Q_2, "d2")
+    gate.add_component(carr_3Q_3, "d3")
+    gate.comps["d1"]["carrier"].params["framechange"].set_value(
+        (-SIDEBAND * t_final) * 2 * np.pi % (2 * np.pi)
+    )
+    gate.comps["d2"]["carrier"].params["framechange"].set_value(
+        (-SIDEBAND * t_final) * 2 * np.pi % (2 * np.pi)
+    )
+
+    return gate, dir, model, generator
+
+
 if __name__ == '__main__':
     qubit_lvls = 4
     freq_q1 = 5e9
@@ -535,234 +763,13 @@ if __name__ == '__main__':
     gate = iswap
     dir = 'doubly_res_iswap'
 
-    # __t_final = 100e-9
-    # qubit_lvls = 3
-    # freq_q1 = 5e9
-    # anhar_q1 = -210e6
-    # t1_q1 = 27e-6
-    # t2star_q1 = 39e-6
-    # qubit_temp = 50e-3
-    #
-    # q1 = chip.Qubit(
-    #     name="Q1",
-    #     desc="Qubit 1",
-    #     freq=Quantity(value=freq_q1, min_val=4.995e9, max_val=5.005e9, unit='Hz 2pi'),
-    #     anhar=Quantity(value=anhar_q1, min_val=-380e6, max_val=-120e6, unit='Hz 2pi'),
-    #     hilbert_dim=qubit_lvls,
-    #     t1=Quantity(value=t1_q1, min_val=1e-6, max_val=90e-6, unit='s'),
-    #     t2star=Quantity(value=t2star_q1, min_val=10e-6, max_val=90e-3, unit='s'),
-    #     temp=Quantity(value=qubit_temp, min_val=0.0, max_val=0.12, unit='K')
-    # )
-    #
-    # freq_q2 = 5.3e9
-    # anhar_q2 = -240e6
-    # t1_q2 = 23e-6
-    # t2star_q2 = 31e-6
-    # q2 = chip.Qubit(
-    #     name="Q2",
-    #     desc="Qubit 2",
-    #     freq=Quantity(value=freq_q2, min_val=5.295e9, max_val=5.305e9, unit='Hz 2pi'),
-    #     anhar=Quantity(value=anhar_q2, min_val=-380e6, max_val=-120e6, unit='Hz 2pi'),
-    #     hilbert_dim=qubit_lvls,
-    #     t1=Quantity(value=t1_q2, min_val=1e-6, max_val=90e-6, unit='s'),
-    #     t2star=Quantity(value=t2star_q2, min_val=10e-6, max_val=90e-6, unit='s'),
-    #     temp=Quantity(value=qubit_temp, min_val=0.0, max_val=0.12, unit='K')
-    # )
-    #
-    # freq_q3 = 5.6e9
-    # anhar_q3 = -240e6
-    # t1_q3 = 23e-6
-    # t2star_q3 = 31e-6
-    # q3 = chip.Qubit(
-    #     name="Q3",
-    #     desc="Qubit 3",
-    #     freq=Quantity(value=freq_q3, min_val=5.595e9, max_val=5.605e9, unit='Hz 2pi'),
-    #     anhar=Quantity(value=anhar_q3, min_val=-380e6, max_val=-120e6, unit='Hz 2pi'),
-    #     hilbert_dim=qubit_lvls,
-    #     t1=Quantity(value=t1_q3, min_val=1e-6, max_val=90e-6, unit='s'),
-    #     t2star=Quantity(value=t2star_q3, min_val=10e-6, max_val=90e-6, unit='s'),
-    #     temp=Quantity(value=qubit_temp, min_val=0.0, max_val=0.12, unit='K')
-    # )
-    #
-    # coupling_strength = 50e6
-    # q1q2 = chip.Coupling(
-    #     name="Q1-Q2",
-    #     desc="coupling",
-    #     comment="Coupling qubit 1 to qubit 2",
-    #     connected=["Q1", "Q2"],
-    #     strength=Quantity(
-    #         value=coupling_strength,
-    #         min_val=-1 * 1e3,
-    #         max_val=200e6,
-    #         unit='Hz 2pi'
-    #     ),
-    #     hamiltonian_func=hamiltonians.int_XX
-    # )
-    #
-    # q1q3 = chip.Coupling(
-    #     name="Q1-Q3",
-    #     desc="coupling",
-    #     comment="Coupling qubit 1 to qubit 3",
-    #     connected=["Q1", "Q3"],
-    #     strength=Quantity(
-    #         value=coupling_strength,
-    #         min_val=-1 * 1e3,
-    #         max_val=200e6,
-    #         unit='Hz 2pi'
-    #     ),
-    #     hamiltonian_func=hamiltonians.int_XX
-    # )
-    #
-    # q2q3 = chip.Coupling(
-    #     name="Q2-Q3",
-    #     desc="coupling",
-    #     comment="Coupling qubit 2 to qubit 3",
-    #     connected=["Q2", "Q3"],
-    #     strength=Quantity(
-    #         value=coupling_strength,
-    #         min_val=-1 * 1e3,
-    #         max_val=200e6,
-    #         unit='Hz 2pi'
-    #     ),
-    #     hamiltonian_func=hamiltonians.int_XX
-    # )
-    #
-    # drive1 = chip.Drive(
-    #     name="d1",
-    #     desc="Drive 1",
-    #     comment="Drive line 1 on qubit 1",
-    #     connected=["Q1"],
-    #     hamiltonian_func=hamiltonians.x_drive
-    # )
-    # drive2 = chip.Drive(
-    #     name="d2",
-    #     desc="Drive 2",
-    #     comment="Drive line 2 on qubit 2",
-    #     connected=["Q2"],
-    #     hamiltonian_func=hamiltonians.x_drive
-    # )
-    #
-    # drive3 = chip.Drive(
-    #     name="d3",
-    #     desc="Drive 3",
-    #     comment="Drive line 3 on qubit 3",
-    #     connected=["Q3"],
-    #     hamiltonian_func=hamiltonians.x_drive
-    # )
-    #
-    # model = Model(
-    #     [q1, q2, q3],  # Individual, self-contained components
-    #     [drive1, drive2, drive3, q1q2, q1q3, q2q3],  # Interactions between components
-    # )
-    # model.set_lindbladian(False)
-    # model.set_dressed(True)
-    #
-    # sim_res = 100e9  # Resolution for numerical simulation
-    # awg_res = 2e9  # Realistic, limited resolution of an AWG
-    # v2hz = 1e9
-    #
-    # lo = devices.LO(name='lo', resolution=sim_res)
-    # awg = devices.AWG(name='awg', resolution=awg_res)
-    # mixer = devices.Mixer(name='mixer')
-    # dig_to_an = devices.DigitalToAnalog(name="dac", resolution=sim_res)
-    # v_to_hz = devices.VoltsToHertz(
-    #     name='v_to_hz',
-    #     V_to_Hz=Quantity(value=v2hz, min_val=0.9e9, max_val=1.1e9, unit='Hz/V')
-    # )
-    #
-    # generator = Generator(
-    #     devices={
-    #         "LO": lo,
-    #         "AWG": awg,
-    #         "DigitalToAnalog": dig_to_an,
-    #         "Mixer": mixer,
-    #         "VoltsToHertz": v_to_hz
-    #     },
-    #     chains={
-    #         "d1": {
-    #             "LO": [],
-    #             "AWG": [],
-    #             "DigitalToAnalog": ["AWG"],
-    #             "Mixer": ["LO", "DigitalToAnalog"],
-    #             "VoltsToHertz": ["Mixer"],
-    #         },
-    #         "d2": {
-    #             "LO": [],
-    #             "AWG": [],
-    #             "DigitalToAnalog": ["AWG"],
-    #             "Mixer": ["LO", "DigitalToAnalog"],
-    #             "VoltsToHertz": ["Mixer"],
-    #         },
-    #         "d3": {
-    #             "LO": [],
-    #             "AWG": [],
-    #             "DigitalToAnalog": ["AWG"],
-    #             "Mixer": ["LO", "DigitalToAnalog"],
-    #             "VoltsToHertz": ["Mixer"],
-    #         }
-    #     }
-    # )
-    #
-    # lo_freq_q1 = freq_q1 + SIDEBAND
-    # lo_freq_q2 = freq_q2 + SIDEBAND
-    # lo_freq_q3 = freq_q3 + SIDEBAND
-    #
-    # carr_3Q_1 = pulse.Carrier(
-    #     name="carrier",
-    #     desc="Carrier on drive 1",
-    #     params={
-    #         'freq': Quantity(value=lo_freq_q3, min_val=0.8 * lo_freq_q1, max_val=1.2 * lo_freq_q3, unit='Hz 2pi'),
-    #         'framechange': Quantity(value=0.0, min_val=-np.pi, max_val=3 * np.pi, unit='rad')
-    #     }
-    # )
-    #
-    # carr_3Q_2 = pulse.Carrier(
-    #     name="carrier",
-    #     desc="Carrier on drive 2",
-    #     params={
-    #         'freq': Quantity(value=lo_freq_q3, min_val=0.8 * lo_freq_q1, max_val=1.2 * lo_freq_q3, unit='Hz 2pi'),
-    #         'framechange': Quantity(value=0.0, min_val=-np.pi, max_val=3 * np.pi, unit='rad')
-    #     }
-    # )
-    #
-    # carr_3Q_3 = pulse.Carrier(
-    #     name="carrier",
-    #     desc="Carrier on drive 3",
-    #     params={
-    #         'freq': Quantity(value=lo_freq_q3, min_val=0.8 * lo_freq_q1, max_val=1.2 * lo_freq_q3, unit='Hz 2pi'),
-    #         'framechange': Quantity(value=0.0, min_val=-np.pi, max_val=3 * np.pi, unit='rad')
-    #     }
-    # )
-    #
-    # ccnot = gates.Instruction(
-    #     name="ccnot", targets=[0, 1, 2], t_start=0.0, t_end=__t_final, channels=["d1", "d2", "d3"],
-    #     ideal=np.array([
-    #         [1, 0, 0, 0, 0, 0, 0, 0],
-    #         [0, 1, 0, 0, 0, 0, 0, 0],
-    #         [0, 0, 1, 0, 0, 0, 0, 0],
-    #         [0, 0, 0, 1, 0, 0, 0, 0],
-    #         [0, 0, 0, 0, 1, 0, 0, 0],
-    #         [0, 0, 0, 0, 0, 1, 0, 0],
-    #         [0, 0, 0, 0, 0, 0, 0, 1],
-    #         [0, 0, 0, 0, 0, 0, 1, 0],
-    #     ])
-    # )
-    #
-    # gate = ccnot
-    # dir = 'toffoli_100ns_trial'
-    #
-    # gate.add_component(carr_3Q_1, "d1")
-    # gate.add_component(carr_3Q_2, "d2")
-    # gate.add_component(carr_3Q_3, "d3")
-    # gate.comps["d1"]["carrier"].params["framechange"].set_value(
-    #     (-SIDEBAND * __t_final) * 2 * np.pi % (2 * np.pi)
-    # )
-
     gate.add_component(carr_2Q_1, "d1")
     gate.add_component(carr_2Q_2, "d2")
     gate.comps["d1"]["carrier"].params["framechange"].set_value(
         (-SIDEBAND * __t_final) * 2 * np.pi % (2 * np.pi)
     )
+
+    gate, dir, model, generator = get_ccx_system(t_final=100e-9, qubit_lvls=4)
 
     parameter_map = ParameterMap(instructions=[gate], model=model, generator=generator)
     exp = Experiment(pmap=parameter_map)
