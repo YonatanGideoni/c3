@@ -9,6 +9,9 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 import c3.generator.devices as devices
+from alex_system.four_level_transmons.DataOutput import DataOutput
+from alex_system.four_level_transmons.utilities import createQubits, createChainCouplings, createDrives, \
+    createGenerator2LOs
 from c3.c3objs import Quantity
 from c3.experiment import Experiment
 from c3.generator.generator import Generator
@@ -545,6 +548,52 @@ def get_ccx_system(t_final=100e-9, qubit_lvls=4):
     )
 
     return gate, dir, model, generator
+
+
+def get_alex_system(output_dir='alex_sys_output_dir'):
+    qubit_levels = [4, 4]
+    qubit_frequencies = [5e9, 5e9]
+    anharmonicities = [-300e6, -300e6]
+    t1s = [25e-6, 25e-6]
+    t2stars = [35e-6, 35e-6]
+    qubit_temps = 50e-3
+    couplingStrength = 20e6
+    isDressed = True
+
+    print("qubits frequencies: ", qubit_frequencies, "anharmonicities: ", anharmonicities,
+          "coupling: ", couplingStrength)
+
+    level_labels_transmon = ["|0,0\\rangle", "|0,1\\rangle", "|1,0\\rangle", "|1,1\\rangle"]
+    for i in range(len(level_labels_transmon), max(qubit_levels)):
+        level_labels_transmon.append("leakage")
+    level_labels = []
+    level_labels_with_leakage = []
+    level_labels_short = []
+    for i in range(qubit_levels[0]):
+        for j in range(qubit_levels[1]):
+            if i > 3 or j > 3:
+                level_labels_with_leakage.append("leakage")
+                level_labels_short.append(None)
+            else:
+                s = f"${level_labels_transmon[i]},{level_labels_transmon[j]}$"
+                level_labels.append(s)
+                level_labels_with_leakage.append(s)
+                level_labels_short.append(f"{i},{j}")
+    level_labels_transmon = [f"${x}$" for x in level_labels_transmon]
+    output = DataOutput(output_dir, file_suffix='before')
+
+    qubits = createQubits(qubit_levels, qubit_frequencies, anharmonicities,
+                          t1s, t2stars, qubit_temps)
+    coupling = createChainCouplings([couplingStrength], qubits)
+    drives = createDrives(qubits)
+
+    # Create the model
+    model = Model(qubits, coupling + drives)
+    model.set_lindbladian(False)
+    model.set_dressed(isDressed)
+    model.set_FR(False)  # change?
+
+    generator = createGenerator2LOs(drives, sim_res=sim_res, awg_res=awg_res)
 
 
 if __name__ == '__main__':
