@@ -3,7 +3,7 @@ import os
 import pickle
 import tempfile
 from copy import deepcopy
-from typing import List
+from typing import List, Callable
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -126,20 +126,21 @@ def opt_single_sig_exp(exp: Experiment) -> tuple:
 
 
 def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, cache_path: str, driver: str = None,
-                                   env_name: str = None, gate_name: str = None, debug: bool = False, MIN_AMP: float = 5,
-                                   AMP_RED_FCTR: float = 0.5, MAX_PLOT_INFID: float = 0.1,
-                                   MAX_INFID_TO_CACHE: float = 0.02) -> tuple:
-    best_overall_infid = np.inf
-    best_overall_params = None
+                                   env_name: str = None, gate_name: str = None, debug: bool = False,
+                                   MAX_PLOT_INFID: float = 0.1, MAX_INFID_TO_CACHE: float = 0.02) -> tuple:
+    infid_per_amp = {}
+    params_per_amp = {}
     n_cached = 0
-    while (max_amp := amp.get_limits()[1]) > MIN_AMP:
-        amp.set_value(max_amp / 2)
+
+    def run_opt():
+        nonlocal n_cached
+
+        max_amp = amp.get_limits()[1]
 
         best_infid, best_params_vals = opt_single_sig_exp(exp)
 
-        if best_infid < best_overall_infid:
-            best_overall_infid = best_infid
-            best_overall_params = best_params_vals
+        infid_per_amp[max_amp] = best_infid
+        params_per_amp[max_amp] = best_params_vals
 
         if debug:
             print(f'Driver:   {driver}')
@@ -167,7 +168,14 @@ def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, cache_path: s
 
             n_cached += 1
 
-        amp._set_limits(0, max_amp * AMP_RED_FCTR)
+    run_for_amps_range(run_opt, amp)
+
+    best_overall_infid = np.inf
+    best_overall_params = None
+    for amp in infid_per_amp.keys():
+        if (infid := infid_per_amp[amp]) < best_overall_infid:
+            best_overall_infid = infid
+            best_overall_params = params_per_amp[amp]
 
     return best_overall_infid, best_overall_params
 
@@ -189,6 +197,15 @@ def cache_exp(exp: Experiment, cache_dir: str, driver, env_name: str, params_val
     exp.compute_propagators()
     cache_path = get_cached_exp_path(cache_dir, driver, env_name)
     exp.write_config(cache_path)
+
+
+def run_for_amps_range(func: Callable, amp, MIN_AMP: float = 5, AMP_RED_FCTR: float = 0.5, ):
+    while (max_amp := amp.get_limits()[1]) > MIN_AMP:
+        amp.set_value(max_amp / 2)
+
+        func()
+
+        amp._set_limits(0, max_amp * AMP_RED_FCTR)
 
 
 # assumes that the experiment comes with the various devices set up. TODO - make a function that does this
@@ -216,26 +233,35 @@ def find_opt_env_for_gate(exp: Experiment, gate: Instruction, base_opt_params: l
             opt_params = get_opt_params_conf(driver, gate_name, env_name, env_to_opt_params) + base_opt_params
             exp.pmap.update_parameters()
             exp.pmap.set_opt_map(opt_params)
-            if n_pulses_to_opt > 1:
-                subcache_dir = os.path.join(cache_dir, env_name + '_sub_opt')
-                if not os.path.isdir(subcache_dir):
-                    os.mkdir(subcache_dir)
-                find_opt_env_for_gate(exp, gate_with_extra_env, opt_params, subcache_dir, n_pulses_to_opt - 1,
-                                      debug=debug)
-
             amp = params['amp']
-            good_res_cache_dir = os.path.join(cache_dir, 'good_infid_exps')
-            if not os.path.isdir(good_res_cache_dir):
-                os.mkdir(good_res_cache_dir)
-            good_res_cache_path = os.path.join(good_res_cache_dir, f'{driver}_{env_name}_' + '{cache_num}.hjson')
-            best_infid, best_params_vals = find_opt_params_for_single_env(exp, amp, good_res_cache_path, driver,
-                                                                          env_name, gate_name, debug)
+            if n_pulses_to_opt > 1:
+                def recursive_opt_for_different_amps():
+                    max_amp = amp.get_limits()[1]
+                    subcache_dir = os.path.join(cache_dir, env_name + f'_{driver}_max_amp={max_amp:.1f}_sub_opt')
+                    if not os.path.isdir(subcache_dir):
+                        os.mkdir(subcache_dir)
 
-            best_infid_per_env[driver][env_name] = best_infid
-            best_params_per_env[driver][env_name] = best_params_vals
-            opt_map_params_per_env[driver][env_name] = opt_params
+                    if debug:
+                        print(f'Preparing subopt routine, caching to {subcache_dir}')
 
-            cache_exp(exp, cache_dir, driver, env_name, best_params_vals)
+                    pulse_suffix = str(n_pulses_to_opt - 1)
+                    find_opt_env_for_gate(exp, gate_with_extra_env, opt_params, subcache_dir, n_pulses_to_opt - 1,
+                                          pulse_suffix=pulse_suffix, debug=debug)
+
+                run_for_amps_range(recursive_opt_for_different_amps, amp)
+            else:
+                good_res_cache_dir = os.path.join(cache_dir, 'good_infid_exps')
+                if not os.path.isdir(good_res_cache_dir):
+                    os.mkdir(good_res_cache_dir)
+                good_res_cache_path = os.path.join(good_res_cache_dir, f'{driver}_{env_name}_' + '{cache_num}.hjson')
+                best_infid, best_params_vals = find_opt_params_for_single_env(exp, amp, good_res_cache_path, driver,
+                                                                              env_name, gate_name, debug)
+
+                best_infid_per_env[driver][env_name] = best_infid
+                best_params_per_env[driver][env_name] = best_params_vals
+                opt_map_params_per_env[driver][env_name] = opt_params
+
+                cache_exp(exp, cache_dir, driver, env_name, best_params_vals)
 
             exp.pmap.instructions = base_instructions
 
@@ -441,15 +467,25 @@ if __name__ == '__main__':
     #     ])
     # )
 
-    # cz = gates.Instruction(
-    #     name="cz", targets=[0, 1], t_start=0.0, t_end=__t_final, channels=["d1", "d2"],
-    #     ideal=np.array([
-    #         [1, 0, 0, 0],
-    #         [0, 1, 0, 0],
-    #         [0, 0, 1, 0],
-    #         [0, 0, 0, -1]
-    #     ])
-    # )
+    cz = gates.Instruction(
+        name="cz", targets=[0, 1], t_start=0.0, t_end=__t_final, channels=["d1", "d2"],
+        ideal=np.array([
+            [1, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, -1]
+        ])
+    )
+
+    comp_gate = gates.Instruction(
+        name="comp_gate", targets=[0, 1], t_start=0.0, t_end=__t_final, channels=["d1", "d2"],
+        ideal=np.array([
+            [0, 0, 0, 1],
+            [0, 0, 1, 0],
+            [-1, 0, 0, 0],
+            [0, -1, 0, 0]
+        ])
+    )
 
     # cy = gates.Instruction(
     #     name="cy", targets=[0, 1], t_start=0.0, t_end=__t_final, channels=["d1", "d2"],
@@ -471,6 +507,16 @@ if __name__ == '__main__':
         ])
     )
 
+    iswap = gates.Instruction(
+        name="iswap", targets=[0, 1], t_start=0.0, t_end=__t_final, channels=["d1", "d2"],
+        ideal=np.array([
+            [1, 0, 0, 0],
+            [0, 0, 1j, 0],
+            [0, 1j, 0, 0],
+            [0, 0, 0, 1]
+        ])
+    )
+
     # gate = cnot12
     # dir = 'cx_33_perc_gate_time'
 
@@ -480,8 +526,14 @@ if __name__ == '__main__':
     # gate = cz
     # dir = 'cz_multipulse_opt'
 
+    # gate = comp_gate
+    # dir = 'comp_gate_doubly_res_trial'
+
     gate = swap
-    dir = 'doubly_resonant_swap'
+    dir = 'doubly_resonant_tripulse_swap'
+
+    gate = iswap
+    dir = 'doubly_res_iswap'
 
     # __t_final = 100e-9
     # qubit_lvls = 3
@@ -715,4 +767,4 @@ if __name__ == '__main__':
     parameter_map = ParameterMap(instructions=[gate], model=model, generator=generator)
     exp = Experiment(pmap=parameter_map)
 
-    optimize_gate(exp, gate, cache_dir=dir, n_pulses_to_add=2, opt_all_at_once=False, debug=True)
+    optimize_gate(exp, gate, cache_dir=dir, n_pulses_to_add=2, opt_all_at_once=True, debug=True)
