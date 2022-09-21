@@ -39,24 +39,18 @@ def _from_dict_get_name_back_compat(cfg: dict, def_name: str) -> str:
 class Instruction:
     """
     Collection of components making up the control signal for a line.
-
     Parameters
     ----------
-    ideal: np.ndarray
-        Ideal gate that the instruction should emulate.
-    channels : list
-        List of channel names (strings).
     t_start : np.float64
         Start of the signal.
     t_end : np.float64
         End of the signal.
-
-
+    channels : list
+        List of channel names (strings)
     Attributes
     ----------
     comps : dict
         Nested dictionary with lines and components as keys
-
     Example:
     comps = {
              'channel_1' : {
@@ -65,7 +59,6 @@ class Instruction:
                             'carrier': carrier
                             }
              }
-
     """
 
     def __init__(
@@ -137,7 +130,7 @@ class Instruction:
                     )
             self.ideal = np_kron_n(gate_list)
 
-    def get_ideal_gate(self, dims, index=None):
+    def get_ideal_gate(self, dims, index=None, active_levels=2):
         if self.ideal is None:
             raise Exception(
                 "C3:ERROR: No ideal representation definded for gate"
@@ -149,14 +142,17 @@ class Instruction:
             targets = list(range(len(dims)))
 
         ideal_gate = insert_mat_kron(
-            [2] * len(dims),  # we compare to the computational basis
+            [active_levels] * len(dims),  # we compare to the computational basis
             targets,
             [self.ideal],
         )
 
         if index:
             ideal_gate = tf_project_to_comp(
-                ideal_gate, dims=[2] * len(dims), index=index
+                ideal_gate,
+                dims=[active_levels] * len(dims),
+                index=index,
+                outdims=[active_levels] * len(dims),
             )
 
         return ideal_gate
@@ -338,7 +334,7 @@ class Instruction:
             self.t_end = t_end
         self.t_end = float(t_end * (1 + buffer))
 
-    def get_awg_signal(self, chan, ts):
+    def get_awg_signal(self, chan, ts, awg_index):
         amp_tot_sq = 0
         signal = tf.zeros_like(ts, tf.complex128)
         self._timings = dict()
@@ -346,11 +342,12 @@ class Instruction:
             comp = self.comps[chan][comp_name]
             t_start, t_end = self.get_timings(chan, comp_name)
             ts_off = ts - t_start
-            if isinstance(comp, Envelope):
+            if isinstance(comp, Envelope) and \
+                    (awg_index is None or comp.name == f"envelope_{chan}_{awg_index}"):
                 amp_re = comp.params["amp"].get_value()
                 amp = tf.complex(amp_re, tf.zeros_like(amp_re))
 
-                amp_tot_sq += amp**2
+                amp_tot_sq += amp ** 2
 
                 xy_angle = comp.params["xy_angle"].get_value()
                 freq_offset = comp.params["freq_offset"].get_value()

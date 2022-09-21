@@ -85,7 +85,7 @@ class Device(C3obj):
         # return self.slice_num
 
     def create_ts(
-        self, t_start: float = 0, t_end: float = 0, centered: bool = True
+            self, t_start: float = 0, t_end: float = 0, centered: bool = True
     ) -> tf.constant:
         """
         Compute time samples.
@@ -122,7 +122,7 @@ class Device(C3obj):
         return ts
 
     def process(
-        self, instr: Instruction, chan: str, signals: List[Dict[str, Any]]
+            self, instr: Instruction, chan: str, signals: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """To be implemented by inheriting class.
 
@@ -201,7 +201,7 @@ class VoltsToHertz(Device):
         self.outputs = props.pop("outputs", 1)
 
     def process(
-        self, instr: Instruction, chan: str, mixed_signal: List[Dict[str, Any]]
+            self, instr: Instruction, chan: str, mixed_signal: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """Transform signal from value of V to Hz.
 
@@ -260,7 +260,7 @@ class Crosstalk(Device):
         self.params["crosstalk_matrix"] = props.pop("crosstalk_matrix", None)
 
     def process(
-        self, instr: Instruction, chan: str, signals: List[Dict[str, Any]]
+            self, instr: Instruction, chan: str, signals: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """
         Mix channels in the input signal according to a crosstalk matrix.
@@ -304,7 +304,7 @@ class DigitalToAnalog(Device):
         self.sampling_method = props.pop("sampling_method", "nearest")
 
     def process(
-        self, instr: Instruction, chan: str, awg_signal: List[Dict[str, Any]]
+            self, instr: Instruction, chan: str, awg_signal: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """Resample the awg values to higher resolution.
 
@@ -362,7 +362,7 @@ class Filter(Device):
         # super().__init__(**props)
 
     def process(
-        self, instr: Instruction, chan: str, Hz_signal: List[Dict[str, Any]]
+            self, instr: Instruction, chan: str, Hz_signal: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """Apply a filter function to the signal."""
         raise Exception("C3:ERROR Not yet implemented.")
@@ -421,7 +421,7 @@ class CouplingTuning(Device):
         return delta_coup
 
     def process(
-        self, instr: Instruction, chan: str, signal_in: List[Dict[str, Any]]
+            self, instr: Instruction, chan: str, signal_in: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """
         Compute the qubit frequency resulting from an applied flux.
@@ -487,7 +487,7 @@ class FluxTuning(Device):
             factor = tf.sqrt(
                 tf.sqrt(
                     tf.cos(pi * phi / phi_0) ** 2
-                    + d**2 * tf.sin(pi * phi / phi_0) ** 2
+                    + d ** 2 * tf.sin(pi * phi / phi_0) ** 2
                 )
             )
         else:
@@ -502,7 +502,7 @@ class FluxTuning(Device):
         return biased_freq
 
     def process(
-        self, instr: Instruction, chan: str, signal_in: List[Dict[str, Any]]
+            self, instr: Instruction, chan: str, signal_in: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """
         Compute the qubit frequency resulting from an applied flux.
@@ -571,7 +571,7 @@ class FluxTuningLinear(Device):
             d = self.params["d"].get_value()
             max_freq = omega_0
             min_freq = omega_0 * tf.sqrt(
-                tf.sqrt(tf.cos(pi * 0.5) ** 2 + d**2 * tf.sin(pi * 0.5) ** 2)
+                tf.sqrt(tf.cos(pi * 0.5) ** 2 + d ** 2 * tf.sin(pi * 0.5) ** 2)
             )
         else:
             max_freq = omega_0
@@ -839,7 +839,7 @@ class HighpassFilter(Device):
                     tf.reshape(
                         tf.math.reduce_sum(
                             tf.math.multiply(
-                                signal[p : p + len(resp_shape)], resp_shape
+                                signal[p: p + len(resp_shape)], resp_shape
                             )
                         ),
                         shape=[1],
@@ -912,7 +912,7 @@ class Mixer(Device):
         self.outputs = props.pop("outputs", 1)
 
     def process(
-        self, instr: Instruction, chan: str, inputs: List[Dict[str, Any]]
+            self, instr: Instruction, chan: str, inputs: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """Combine signal from AWG and LO.
 
@@ -936,6 +936,35 @@ class Mixer(Device):
         self.signal = {"values": i1 * i2 + q1 * q2, "ts": in1["ts"]}
         # See Engineer's Guide Eq. 88
         # TODO: Check consistency of the signs between Mixer, LO and AWG classes
+        return self.signal
+
+
+@dev_reg_deco
+class RealMixer(Device):
+    """Superposes two real input signals."""
+
+    def __init__(self, **props):
+        super().__init__(**props)
+        self.inputs = props.pop("inputs", 2)
+        self.outputs = props.pop("outputs", 1)
+
+    def process(self, instr: Instruction, chan: str, inputs: List[Dict[str, Any]]):
+        """Combine signal from AWG and LO.
+        Parameters
+        ----------
+        lo_signal : dict
+            Local oscillator signal.
+        awg_signal : dict
+            Waveform generator signal.
+        Returns
+        -------
+        dict
+            Mixed signal.
+        """
+        values = tf.zeros_like(inputs[0]["values"])
+        for ip in inputs:
+            values += ip["values"]
+        self.signal = {"values": values / float(len(inputs)), "ts": inputs[0]["ts"]}
         return self.signal
 
 
@@ -1045,7 +1074,7 @@ class DC_Offset(Device):
         self.outputs = props.pop("outputs", 1)
         self.signal = None
         if (
-            self.params["offset_amp"] is None
+                self.params["offset_amp"] is None
         ):  # i.e. it was not set in the general params already
             self.params["offset_amp"] = props.pop("offset_amp")
 
@@ -1063,15 +1092,16 @@ class DC_Offset(Device):
 class LO(Device):
     """Local oscillator device, generates a constant oscillating signal."""
 
-    def __init__(self, **props):
+    def __init__(self, lo_index, **props):
         super().__init__(**props)
         self.outputs = props.pop("outputs", 1)
         self.phase_noise = props.pop("phase_noise", 0)
         self.freq_noise = props.pop("freq_noise", 0)
         self.amp_noise = props.pop("amp_noise", 0)
+        self.lo_index = lo_index
 
     def process(
-        self, instr: Instruction, chan: str, signal: List[Dict[str, Any]]
+            self, instr: Instruction, chan: str, signal: List[Dict[str, Any]]
     ) -> dict:
         # TODO check somewhere that there is only 1 carrier per instruction
         ts = self.create_ts(instr.t_start, instr.t_end, centered=True)
@@ -1081,7 +1111,8 @@ class LO(Device):
         freq_noise = self.freq_noise
         components = instr.comps
         for comp in components[chan].values():
-            if isinstance(comp, Carrier):
+            if isinstance(comp, Carrier) and \
+                    (self.lo_index is None or comp.name == f"carrier_{chan}_{self.lo_index}"):
                 cos, sin = [], []
                 omega_lo = comp.params["freq"].get_value()
                 if amp_noise and freq_noise:
@@ -1141,7 +1172,7 @@ class AWG(Device):
         Filepath to store generated waveforms.
     """
 
-    def __init__(self, **props):
+    def __init__(self, awg_index, **props):
         self.logdir = props.pop(
             "logdir", os.path.join(tempfile.gettempdir(), "c3logs", "AWG")
         )
@@ -1152,6 +1183,7 @@ class AWG(Device):
         self.amp_tot_sq = None
         self.process = self.create_IQ
         self.centered_ts = True
+        self.awg_index = awg_index
 
     # TODO create DC function
 
@@ -1165,7 +1197,6 @@ class AWG(Device):
         In the xperiment these will be routed to AWG and mixer
         electronics, while in the simulation they provide the shapes of the
         instruction fields to be added to the Hamiltonian.
-
         Parameters
         ----------
         channel : str
@@ -1176,17 +1207,15 @@ class AWG(Device):
             Beginning of the signal.
         t_end : float
             End of the signal.
-
         Returns
         -------
         dict
             Waveforms as I and Q components.
-
         """
         ts = self.create_ts(instr.t_start, instr.t_end, centered=True)
         self.ts = ts
 
-        signal, norm = instr.get_awg_signal(chan, ts)
+        signal, norm = instr.get_awg_signal(chan, ts, self.awg_index)
 
         self.amp_tot = norm
         self.signal[chan] = {
