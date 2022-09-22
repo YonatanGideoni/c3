@@ -131,7 +131,7 @@ def opt_single_sig_exp(exp: Experiment) -> tuple:
 
 def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, cache_path: str, driver: str = None,
                                    env_name: str = None, gate_name: str = None, debug: bool = False,
-                                   MAX_PLOT_INFID: float = 0.1, MAX_INFID_TO_CACHE: float = 0.02) -> tuple:
+                                   MAX_PLOT_INFID: float = 0.05, MAX_INFID_TO_CACHE: float = 0.03) -> tuple:
     infid_per_amp = {}
     params_per_amp = {}
     n_cached = 0
@@ -651,8 +651,7 @@ def get_alex_system(output_dir='alex_sys_output_dir', t_final=500e-9):
     return gate, output_dir, model, generator
 
 
-if __name__ == '__main__':
-    qubit_lvls = 4
+def get_2q_system(gate_name: str, qubit_lvls=4, __t_final=45e-9, doubly_resonant: bool = False):
     freq_q1 = 5e9
     anhar_q1 = -210e6
     t1_q1 = 27e-6
@@ -670,12 +669,14 @@ if __name__ == '__main__':
         temp=Quantity(value=qubit_temp, min_val=0.0, max_val=0.12, unit="K"),
     )
 
-    freq_q2 = 5.e9
+    freq_q2 = 5.6e9 if not doubly_resonant else freq_q1
+    q2_freq_quantity = Quantity(value=freq_q2, min_val=4.995e9, max_val=5.005e9, unit='Hz 2pi') \
+        if not doubly_resonant else deepcopy(q1.freq)
     anhar_q2 = -240e6
     t1_q2 = 23e-6
     t2star_q2 = 31e-6
     q2 = chip.Qubit(name="Q2", desc="Qubit 2",
-                    freq=Quantity(value=freq_q2, min_val=4.995e9, max_val=5.005e9, unit='Hz 2pi'),
+                    freq=q2_freq_quantity,
                     anhar=Quantity(value=anhar_q2, min_val=-380e6, max_val=-120e6, unit='Hz 2pi'),
                     hilbert_dim=qubit_lvls,
                     t1=Quantity(value=t1_q2, min_val=1e-6, max_val=90e-6, unit='s'),
@@ -735,18 +736,11 @@ if __name__ == '__main__':
 
     generator = Generator(
         devices={
-            "LO": devices.LO(name="lo", resolution=sim_res, outputs=1),
-            "AWG": devices.AWG(name="awg", resolution=awg_res, outputs=1),
-            "DigitalToAnalog": devices.DigitalToAnalog(
-                name="dac", resolution=sim_res, inputs=1, outputs=1
-            ),
-            "Mixer": devices.Mixer(name="mixer", inputs=2, outputs=1),
-            "VoltsToHertz": devices.VoltsToHertz(
-                name="v_to_hz",
-                V_to_Hz=Quantity(value=1e9, min_val=0.9e9, max_val=1.1e9, unit="Hz/V"),
-                inputs=1,
-                outputs=1,
-            ),
+            "LO": lo,
+            "AWG": awg,
+            "DigitalToAnalog": dig_to_an,
+            "Mixer": mixer,
+            "VoltsToHertz": v_to_hz,
         },
         chains={
             "d1": {
@@ -765,8 +759,6 @@ if __name__ == '__main__':
             },
         },
     )
-
-    __t_final = 45e-9  # Time for two qubit gates
 
     lo_freq_q1 = freq_q1 + SIDEBAND
     lo_freq_q2 = freq_q2 + SIDEBAND
@@ -789,15 +781,15 @@ if __name__ == '__main__':
         }
     )
 
-    # cnot12 = gates.Instruction(
-    #     name="cnot", targets=[0, 1], t_start=0.0, t_end=__t_final, channels=["d1", "d2"],
-    #     ideal=np.array([
-    #         [1, 0, 0, 0],
-    #         [0, 1, 0, 0],
-    #         [0, 0, 0, 1],
-    #         [0, 0, 1, 0]
-    #     ])
-    # )
+    cnot12 = gates.Instruction(
+        name="cnot", targets=[0, 1], t_start=0.0, t_end=__t_final, channels=["d1", "d2"],
+        ideal=np.array([
+            [1, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 0, 1],
+            [0, 0, 1, 0]
+        ])
+    )
 
     cz = gates.Instruction(
         name="cz", targets=[0, 1], t_start=0.0, t_end=__t_final, channels=["d1", "d2"],
@@ -819,15 +811,15 @@ if __name__ == '__main__':
         ])
     )
 
-    # cy = gates.Instruction(
-    #     name="cy", targets=[0, 1], t_start=0.0, t_end=__t_final, channels=["d1", "d2"],
-    #     ideal=np.array([
-    #         [1, 0, 0, 0],
-    #         [0, 1, 0, 0],
-    #         [0, 0, 0, -1j],
-    #         [0, 0, 1j, 0]
-    #     ])
-    # )
+    cy = gates.Instruction(
+        name="cy", targets=[0, 1], t_start=0.0, t_end=__t_final, channels=["d1", "d2"],
+        ideal=np.array([
+            [1, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 0, -1j],
+            [0, 0, 1j, 0]
+        ])
+    )
 
     swap = gates.Instruction(
         name="swap", targets=[0, 1], t_start=0.0, t_end=__t_final, channels=["d1", "d2"],
@@ -849,23 +841,8 @@ if __name__ == '__main__':
         ])
     )
 
-    # gate = cnot12
-    # dir = 'cx_33_perc_gate_time'
-
-    # gate = cy
-    # dir = 'cy_brute_force_cache'
-
-    # gate = cz
-    # dir = 'cz_multipulse_opt'
-
-    # gate = comp_gate
-    # dir = 'comp_gate_doubly_res_trial'
-
-    gate = swap
-    dir = 'doubly_resonant_tripulse_swap'
-
-    gate = iswap
-    dir = 'doubly_res_iswap'
+    gate = {'iswap': iswap, 'cnot': cnot12, 'cx': cnot12, 'cz': cz, 'cy': cy, 'swap': swap,
+            'comp': comp_gate}[gate_name]
 
     gate.add_component(carr_2Q_1, "d1")
     gate.add_component(carr_2Q_2, "d2")
@@ -873,7 +850,14 @@ if __name__ == '__main__':
         (-SIDEBAND * __t_final) * 2 * np.pi % (2 * np.pi)
     )
 
-    gate, dir, model, generator = get_ccx_system(t_final=100e-9, qubit_lvls=4)
+    return gate, model, generator
+
+
+if __name__ == '__main__':
+    gate, model, generator = get_2q_system('cx')
+    dir = 'cnot_multipulse_opt'
+
+    # gate, dir, model, generator = get_ccx_system(t_final=100e-9, qubit_lvls=4)
 
     parameter_map = ParameterMap(instructions=[gate], model=model, generator=generator)
     exp = Experiment(pmap=parameter_map)
