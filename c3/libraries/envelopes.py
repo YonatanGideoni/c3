@@ -243,10 +243,10 @@ def flattop_risefall(t, params):
     t_up = risefall
     t_down = t_final - risefall
     return tf_complexify(
-            (1 + tf.math.erf((t - t_up) / risefall))
-            / 2
-            * (1 + tf.math.erf((-t + t_down) / risefall))
-            / 2
+        (1 + tf.math.erf((t - t_up) / risefall))
+        / 2
+        * (1 + tf.math.erf((-t + t_down) / risefall))
+        / 2
     )
 
 
@@ -368,6 +368,17 @@ def flattop_risefall_1ns(t, params):
     """Flattop gaussian with fixed width of 1ns."""
     params["risefall"] = Qty(1e-9, unit="s")
     return tf_complexify(flattop_risefall(t, params))
+
+
+@env_reg_deco
+def gauss_white_noise(t, params):
+    if isinstance(t, np.ndarray):
+        size = len(t)
+    else:
+        size = t.shape.num_elements()
+    sig = np.random.normal(size=size)
+
+    return tf_complexify(sig)
 
 
 @env_reg_deco
