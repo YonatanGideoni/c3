@@ -653,7 +653,7 @@ def get_alex_system(output_dir='alex_sys_output_dir', t_final=500e-9):
 
 def get_2q_system(gate_name: str, qubit_lvls=4, __t_final=45e-9, doubly_resonant: bool = False):
     freq_q1 = 5e9
-    anhar_q1 = -210e6
+    anhar_q1 = -310e6
     t1_q1 = 27e-6
     t2star_q1 = 39e-6
     qubit_temp = 50e-3
@@ -670,9 +670,9 @@ def get_2q_system(gate_name: str, qubit_lvls=4, __t_final=45e-9, doubly_resonant
     )
 
     freq_q2 = 5.6e9 if not doubly_resonant else freq_q1
-    q2_freq_quantity = Quantity(value=freq_q2, min_val=4.995e9, max_val=5.005e9, unit='Hz 2pi') \
+    q2_freq_quantity = Quantity(value=freq_q2, min_val=5.595e9, max_val=5.605e9, unit='Hz 2pi') \
         if not doubly_resonant else deepcopy(q1.freq)
-    anhar_q2 = -240e6
+    anhar_q2 = -340e6
     t1_q2 = 23e-6
     t2star_q2 = 31e-6
     q2 = chip.Qubit(name="Q2", desc="Qubit 2",
@@ -854,12 +854,18 @@ def get_2q_system(gate_name: str, qubit_lvls=4, __t_final=45e-9, doubly_resonant
 
 
 if __name__ == '__main__':
-    gate, model, generator = get_2q_system('cx')
-    dir = 'cnot_multipulse_opt'
+    t_final = 50e-9
+    gate, model, generator = get_2q_system('cx', __t_final=t_final)
+    dir = f'cnot_{t_final * 1e9:.0f}ns_all_signals_ftgu'
+    dir = f'high_anharm_cnot_{t_final * 1e9:.0f}ns_all_signals_ftgu'
+    if not os.path.isdir(dir):
+        os.mkdir(dir)
 
-    # gate, dir, model, generator = get_ccx_system(t_final=100e-9, qubit_lvls=4)
+    # gate, dir, model, generator = get_ccx_system(t_final=100e-9, qubit_lvls=3)
+
+    # gate, dir, model, generator = get_alex_system('alex_sys_output_dir')
 
     parameter_map = ParameterMap(instructions=[gate], model=model, generator=generator)
     exp = Experiment(pmap=parameter_map)
 
-    optimize_gate(exp, gate, cache_dir=dir, n_pulses_to_add=2, opt_all_at_once=True, debug=True)
+    optimize_gate(exp, gate, cache_dir=dir, n_pulses_to_add=2, opt_all_at_once=False, debug=True)

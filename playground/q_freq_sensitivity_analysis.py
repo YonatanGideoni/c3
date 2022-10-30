@@ -16,7 +16,8 @@ if __name__ == '__main__':
 
     # high_fid_exp_path = 'doubly_resonant_cx\d1_blackman_window2\good_infid_exps\d2_hann1_3.hjson'
     # high_fid_exp_path = 'cy_brute_force_cache\d1_flattop_risefall2\good_infid_exps\d2_blackman_window1_2.hjson'
-    high_fid_exp_path = 'high_anharm_cnot_50ns_all_signals_ftgu\d2_hann2\good_infid_exps\d1_hann1_0.hjson'
+    # high_fid_exp_path = 'high_anharm_cnot_50ns_all_signals_ftgu\d2_hann2\good_infid_exps\d1_hann1_0.hjson'
+    high_fid_exp_path = 'high_anharm_cnot_50ns_all_signals_ftgu\d1_hann2\good_infid_exps\d2_gaussian_nonorm1_5.hjson'
 
     exp = Experiment()
     exp.read_config(high_fid_exp_path)
@@ -33,6 +34,7 @@ if __name__ == '__main__':
     gate_name = gate.get_key()
 
     freq_qty = exp.pmap.model.subsystems['Q1'].params['freq']
+    freq_qty = exp.pmap.instructions['cnot[0, 1]'].comps['d1']['carrier'].params['freq']
     base_freq = freq_qty.numpy()
     freqs_changes = 10 ** np.linspace(0, 10, 50)
     fids = []
@@ -60,7 +62,7 @@ if __name__ == '__main__':
 
     plt.scatter(freqs_changes, 1 - np.array(fids))
     plt.grid()
-    plt.title('Infidelity for different control qubit frequencies for high anharmonicity CX')
+    plt.title('Infidelity for different LO frequencies for high anharmonicity CX')
     plt.xlabel('Frequency offset[Hz]')
     plt.ylabel('Infidelity')
     plt.semilogx()
