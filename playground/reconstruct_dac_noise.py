@@ -44,4 +44,23 @@ plt.xlabel('Frequency[MHz]')
 plt.ylabel('Voltage[nV/$\sqrt{Hz}$]')
 plt.title('DAC noise power spectral density')
 
+n_freqs = 2 * 10 ** 7
+linspace_freqs = np.linspace(1, max(freqs), n_freqs)
+linsp_amps_per_sqrt_hz = np.interp(linspace_freqs, freqs, amps_per_sqrt_hz)
+
+linsp_amps_per_sqrt_hz *= 1e-9
+signal_psd = linsp_amps_per_sqrt_hz ** 2
+freqs = linspace_freqs
+
+N = len(freqs)
+phase = 2 * np.pi * np.random.randn(N)
+magnitude = np.sqrt(signal_psd)
+FFT = magnitude * np.exp(1j * phase)
+
+plt.figure()
+plt.plot(freqs, np.abs(FFT))
+plt.plot(freqs, magnitude)
+plt.title('DAC Noise PSD')
+plt.ylabel('Voltage[V/$\sqrt{Hz}$]')
+
 plt.show()
