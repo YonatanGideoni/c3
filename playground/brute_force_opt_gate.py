@@ -28,6 +28,7 @@ from c3.signal.pulse import Envelope
 from playground.plot_utils import wait_for_not_mouse_press, plot_dynamics, get_init_state
 
 SIDEBAND = 50e6
+ALEX_SYS = False
 
 __shared_params = {'amp', 'xy_angle', 'freq_offset', 't_final', 'delta'}
 ENVELOPES_OPT_PARAMS = {'gaussian_nonorm': {'sigma'}, 'hann': set(), 'blackman_window': set(),
@@ -131,7 +132,7 @@ def opt_single_sig_exp(exp: Experiment) -> tuple:
 
 def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, cache_path: str, driver: str = None,
                                    env_name: str = None, gate_name: str = None, debug: bool = False,
-                                   MAX_PLOT_INFID: float = 0.05, MAX_INFID_TO_CACHE: float = 0.03) -> tuple:
+                                   MAX_PLOT_INFID: float = 0.0, MAX_INFID_TO_CACHE: float = .3) -> tuple:
     infid_per_amp = {}
     params_per_amp = {}
     n_cached = 0
@@ -854,18 +855,20 @@ def get_2q_system(gate_name: str, qubit_lvls=4, __t_final=45e-9, doubly_resonant
 
 
 if __name__ == '__main__':
-    t_final = 50e-9
-    gate, model, generator = get_2q_system('cx', __t_final=t_final)
-    dir = f'cnot_{t_final * 1e9:.0f}ns_all_signals_ftgu'
-    dir = f'high_anharm_cnot_{t_final * 1e9:.0f}ns_all_signals_ftgu'
-    if not os.path.isdir(dir):
-        os.mkdir(dir)
+    # t_final = 50e-9
+    # gate, model, generator = get_2q_system('cx', __t_final=t_final)
+    # dir = f'cnot_{t_final * 1e9:.0f}ns_all_signals_ftgu'
+    # dir = f'test_high_anharm_cnot_{t_final * 1e9:.0f}ns_all_signals_ftgu'
 
     # gate, dir, model, generator = get_ccx_system(t_final=100e-9, qubit_lvls=3)
 
-    # gate, dir, model, generator = get_alex_system('alex_sys_output_dir')
+    ALEX_SYS = True
+    gate, dir, model, generator = get_alex_system('alex_sys_output_dir')
+
+    if not os.path.isdir(dir):
+        os.mkdir(dir)
 
     parameter_map = ParameterMap(instructions=[gate], model=model, generator=generator)
     exp = Experiment(pmap=parameter_map)
 
-    optimize_gate(exp, gate, cache_dir=dir, n_pulses_to_add=2, opt_all_at_once=False, debug=True)
+    optimize_gate(exp, gate, cache_dir=dir, n_pulses_to_add=3, opt_all_at_once=False, debug=True)
