@@ -18,7 +18,7 @@ def run_gate_exp_opt(exp_path: str, exp_cache_dir, debug_cache_dir='debug_cache'
     find_opt_env_for_gate(exp, gate, opt_map_params, cache_dir=debug_cache_dir, debug=True)
 
 
-def plot_exps_in_dir(dir_path: str):
+def plot_exps_in_dir(dir_path: str, min_plot_fid: float = 0.):
     for file_name in os.listdir(dir_path):
         if file_name.split('.')[-1] != 'hjson':
             continue
@@ -34,7 +34,7 @@ def plot_exps_in_dir(dir_path: str):
         print(exp_path)
         print(f'Fid={fid:.6f}')
 
-        if fid < 0.9999:
+        if fid < min_plot_fid:
             continue
 
         init_state = get_init_state(exp, energy_level=4)
@@ -54,21 +54,21 @@ def plot_exps_in_dir(dir_path: str):
         t_final = gate.t_end
         plot_signal(awg, drivers_signals, t_final)
 
-        # wait_for_not_mouse_press(timeout=30)
+        wait_for_not_mouse_press(timeout=30)
 
         plt.close('all')
 
 
-def plot_good_results(base_dir: str):
+def plot_good_results(base_dir: str, min_plot_fid: float = 0):
     for subdir in os.listdir(base_dir):
         subdir_path = os.path.join(base_dir, subdir)
         if not os.path.isdir(subdir_path):
             continue
 
         if subdir != 'good_infid_exps':
-            plot_good_results(subdir_path)
+            plot_good_results(subdir_path, min_plot_fid)
         else:
-            plot_exps_in_dir(subdir_path)
+            plot_exps_in_dir(subdir_path, min_plot_fid)
 
 
 if __name__ == '__main__':
