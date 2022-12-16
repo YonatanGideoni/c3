@@ -44,6 +44,15 @@ def setup_experiment_opt_ctrl(exp: Experiment, maxiter: int = 50) -> OptimalCont
     fid_subspace = [f'Q{i + 1}' for i in range(n_qubits)]
     log_dir = os.path.join(tempfile.TemporaryDirectory().name, "c3logs")
 
+    if ALEX_SYS:
+        fid_func_kwargs = {
+            "active_levels": 4
+        }
+    else:
+        fid_func_kwargs = {
+            "active_levels": 2
+        }
+
     opt = OptimalControl(
         dir_path=log_dir,
         fid_func=unitary_infid_set,
@@ -51,6 +60,7 @@ def setup_experiment_opt_ctrl(exp: Experiment, maxiter: int = 50) -> OptimalCont
         pmap=exp.pmap,
         algorithm=algorithms.lbfgs,
         options={'maxiter': maxiter},
+        fid_func_kwargs=fid_func_kwargs
     )
 
     opt.set_exp(exp)
@@ -165,6 +175,7 @@ def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, cache_path: s
                 plt.close()
 
         if best_infid < MAX_INFID_TO_CACHE:
+            print('caching')
             good_exp_cache_path = cache_path.format(cache_num=n_cached)
             exp.write_config(good_exp_cache_path)
             if debug:
@@ -187,6 +198,10 @@ def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, cache_path: s
 
 def get_carrier_opt_params(drivers: set, gate_name: str) -> list:
     carrier_opt_params = {'framechange'}
+    if ALEX_SYS:
+        return [[(gate_name, driver, f'carrier_{driver}_{i}', carr_param)] for driver in drivers
+                for carr_param in carrier_opt_params for i in (1, 2)]
+
     return [[(gate_name, driver, 'carrier', carr_param)] for driver in drivers for carr_param in carrier_opt_params]
 
 
@@ -286,7 +301,7 @@ def read_cached_opt_map_params(cache_dir: str) -> list:
 
 
 def optimize_gate(exp: Experiment, gate: Instruction, cache_dir: str, opt_map_params: list = None,
-                  n_pulses_to_add: int = 1, opt_all_at_once: bool = False, MAX_INFID_CONTINUE_RECURSION: float = 0.2,
+                  n_pulses_to_add: int = 1, opt_all_at_once: bool = False, MAX_INFID_CONTINUE_RECURSION: float = 0.3,
                   debug: bool = False):
     if opt_map_params is None:
         gate_name = gate.get_key()
