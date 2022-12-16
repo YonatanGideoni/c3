@@ -32,7 +32,7 @@ def plot_exps_in_dir(dir_path: str, min_plot_fid: float = 0.):
 
         print()
         print(exp_path)
-        print(f'Fid={fid:.6f}')
+        print(f'Fid={fid:.4f}')
 
         if fid < min_plot_fid:
             continue
