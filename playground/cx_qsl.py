@@ -1,4 +1,8 @@
+import sys
 import os
+
+conf_path = os.getcwd()
+sys.path.append(conf_path)
 
 import numpy as np
 
@@ -17,10 +21,10 @@ def run_cx(t_final: float, base_dir: str = 'cx_qsl'):
     parameter_map = ParameterMap(instructions=[gate], model=model, generator=generator)
     exp = Experiment(pmap=parameter_map)
 
-    optimize_gate(exp, gate, cache_dir=dir, n_pulses_to_add=2, opt_all_at_once=False, debug=False)
+    optimize_gate(exp, gate, cache_dir=dir, n_pulses_to_add=2, opt_all_at_once=True, debug=False)
 
 
 if __name__ == '__main__':
-    for t_final in np.arange(10e-9, 31e-9, 5e-9):
+    for t_final in np.arange(10e-9, 41e-9, 5e-9):
         print(f'Optimising CX for t_final={t_final * 10 ** 9:.0f}[ns]')
-        run_cx(t_final, base_dir='cx_qsl_initial')
+        run_cx(t_final, base_dir='cx_qsl_initial_ftgu_2pulse')
