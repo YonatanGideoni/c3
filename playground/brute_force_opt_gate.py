@@ -103,7 +103,7 @@ def get_qubits_population(population: np.array, dims: List[int]) -> np.array:
 
 def get_params_dict(opt_params: set, t_final: float) -> dict:
     def_params = {
-        'amp': Quantity(value=1e-5, min_val=0.0, max_val=500., unit="V"),
+        'amp': Quantity(value=1e-5, min_val=0.0, max_val=100., unit="V"),
         't_final': Quantity(value=t_final, min_val=0.0 * t_final, max_val=2.5 * t_final, unit="s"),
         'xy_angle': Quantity(value=0.0, min_val=-0.5 * np.pi, max_val=2.5 * np.pi, unit='rad'),
         'freq_offset': Quantity(value=-SIDEBAND - 3e6, min_val=-56 * 1e6, max_val=-52 * 1e6, unit='Hz 2pi'),
