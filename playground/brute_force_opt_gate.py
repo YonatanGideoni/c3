@@ -142,7 +142,7 @@ def opt_single_sig_exp(exp: Experiment) -> tuple:
 
 def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, cache_path: str, driver: str = None,
                                    env_name: str = None, gate_name: str = None, debug: bool = False,
-                                   MAX_PLOT_INFID: float = 0.0, MAX_INFID_TO_CACHE: float = .3) -> tuple:
+                                   MAX_PLOT_INFID: float = 0.0, MAX_INFID_TO_CACHE: float = .05) -> tuple:
     infid_per_amp = {}
     params_per_amp = {}
     n_cached = 0
@@ -175,7 +175,6 @@ def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, cache_path: s
                 plt.close()
 
         if best_infid < MAX_INFID_TO_CACHE:
-            print('caching')
             good_exp_cache_path = cache_path.format(cache_num=n_cached)
             exp.write_config(good_exp_cache_path)
             if debug:
