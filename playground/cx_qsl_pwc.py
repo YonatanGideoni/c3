@@ -92,6 +92,7 @@ def run_cx(t_final: float, base_dir: str = 'cx_qsl', max_iter: int = 500):
 
     exp.compute_propagators()
     fid = calc_exp_fid(exp)
+    exp.write_config(os.path.join(dir, 'exp.hjson'))
 
     init_state = get_init_state(exp, energy_level=4)
     gate = list(exp.pmap.instructions.values())[0]
@@ -126,7 +127,7 @@ if __name__ == '__main__':
     while max_t_final - min_t_final > 0.5e-9:
         t_final = 0.5 * (max_t_final + min_t_final)
 
-        print(f'Optimising CX for t_final={t_final * 10 ** 9:.0f}[ns]')
+        print(f'Optimising CX for t_final={t_final * 10 ** 9:.2f}[ns]')
         fid = run_cx(t_final, base_dir=f'cx_qsl_pwc_max_amp_{MAX_AMP}')
         fid_per_t_final[t_final] = fid
 
