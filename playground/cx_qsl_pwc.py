@@ -127,8 +127,6 @@ if __name__ == '__main__':
     while max_t_final - min_t_final > 0.5e-9:
         t_final = 0.5 * (max_t_final + min_t_final)
 
-        print(f'Current t_final={t_final:.2e}')
-
         print(f'Optimising CX for t_final={t_final * 10 ** 9:.0f}[ns]')
         fid = run_cx(t_final, base_dir=f'cx_qsl_pwc_max_amp_{MAX_AMP}')
         fid_per_t_final[t_final] = fid
