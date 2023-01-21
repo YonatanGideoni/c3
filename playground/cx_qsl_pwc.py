@@ -3,17 +3,16 @@ import os
 
 from matplotlib import pyplot as plt
 
-from c3.c3objs import Quantity
-from c3.libraries.envelopes import pwc
-from c3.signal.gates import Instruction
-from c3.signal.pulse import Envelope
-from playground.plot_utils import get_init_state, plot_dynamics, plot_splitted_population, plot_signal
-
 conf_path = os.getcwd()
 sys.path.append(conf_path)
 
 import numpy as np
 
+from c3.c3objs import Quantity
+from c3.libraries.envelopes import pwc
+from c3.signal.gates import Instruction
+from c3.signal.pulse import Envelope
+from playground.plot_utils import get_init_state, plot_dynamics, plot_splitted_population, plot_signal
 from c3.experiment import Experiment
 from c3.parametermap import ParameterMap
 from playground.brute_force_opt_gate import get_2q_system, calc_exp_fid, setup_experiment_opt_ctrl
@@ -93,6 +92,7 @@ def run_cx(t_final: float, base_dir: str = 'cx_qsl', max_iter: int = 500):
     exp_opt.optimize_controls()
 
     exp.compute_propagators()
+    fid = calc_exp_fid(exp)
 
     init_state = get_init_state(exp, energy_level=4)
     gate = list(exp.pmap.instructions.values())[0]
@@ -114,7 +114,7 @@ def run_cx(t_final: float, base_dir: str = 'cx_qsl', max_iter: int = 500):
     plt.savefig(os.path.join(dir, 'signal.png'))
     plt.close()
 
-    return calc_exp_fid(exp)
+    return fid
 
 
 if __name__ == '__main__':
