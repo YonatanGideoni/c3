@@ -18,10 +18,7 @@ from c3.parametermap import ParameterMap
 from playground.brute_force_opt_gate import get_2q_system, calc_exp_fid, setup_experiment_opt_ctrl
 
 
-def add_pwc_pulses(exp: Experiment, gate: Instruction, t_final: float, max_amp: float):
-    awg_res = exp.pmap.generator.devices['AWG'].resolution
-    n_slices = int(t_final * awg_res)
-
+def add_pwc_pulses(exp: Experiment, gate: Instruction, n_slices: int, max_amp: float):
     gen_slices = lambda: np.clip(max_amp / 2 * np.random.randn(n_slices), -max_amp, max_amp)
 
     pwc1_params = {
@@ -85,8 +82,10 @@ def run_cx(t_final: float, base_dir: str = 'cx_qsl', max_iter: int = 500):
 
     parameter_map = ParameterMap(instructions=[gate], model=model, generator=generator)
     exp = Experiment(pmap=parameter_map)
+    awg_res = exp.pmap.generator.devices['AWG'].resolution
+    n_slices = int(t_final * awg_res)
 
-    add_pwc_pulses(exp, gate, t_final, MAX_AMP)
+    add_pwc_pulses(exp, gate, n_slices, MAX_AMP)
 
     exp_opt = setup_experiment_opt_ctrl(exp, maxiter=max_iter)
     exp_opt.optimize_controls()
@@ -110,7 +109,7 @@ def run_cx(t_final: float, base_dir: str = 'cx_qsl', max_iter: int = 500):
     drivers_signals = {driver: {sig_name: sig for sig_name, sig in signals.items() if 'carrier' not in sig_name}
                        for driver, signals in drivers_signals.items()}
     awg = exp.pmap.generator.devices['AWG']
-    plot_signal(awg, drivers_signals, t_final)
+    plot_signal(awg, drivers_signals, t_final, n_points=n_slices)
     plt.savefig(os.path.join(dir, 'signal.png'))
     plt.close()
 
