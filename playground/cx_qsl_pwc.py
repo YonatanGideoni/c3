@@ -74,8 +74,8 @@ def add_pwc_pulses(exp: Experiment, gate: Instruction, n_slices: int, max_amp: f
 
 
 def run_cx(t_final: float, base_dir: str = 'cx_qsl', max_iter: int = 500):
-    gate, model, generator = get_2q_system('cx', __t_final=t_final)
-    dir = os.path.join(f'{base_dir}', f'{t_final * 1e9:.0f}ns_pwc')
+    gate, model, generator = get_2q_system('cx', __t_final=t_final, qubit_lvls=6)
+    dir = os.path.join(f'{base_dir}', f'{t_final * 1e9:.2f}ns_pwc')
 
     if not os.path.isdir(dir):
         os.makedirs(dir)
@@ -118,7 +118,7 @@ def run_cx(t_final: float, base_dir: str = 'cx_qsl', max_iter: int = 500):
 
 
 if __name__ == '__main__':
-    MAX_AMP = 4
+    MAX_AMP = 0.5
     min_fid = 0.99
 
     max_t_final = 100e-9
