@@ -71,12 +71,16 @@ def plot_signal(awg: AWG, drivers_signals: dict, t_final: float,
     for driver, envs in drivers_signals.items():
         driver_ind = int(driver[1:]) - 1
         for env in envs.values():
-            # de-normalize the amplitude so it has units of volts
-            ts = awg.create_ts(0, t_final)
-            env.normalize_pulse = False
-            area = abs(env.get_shape_values(ts).numpy()).sum()
             amplitude = env.params['amp'].numpy()
-            real_amplitude = amplitude / area
+
+            if env.normalize_pulse:
+                # de-normalize the amplitude so it has units of volts
+                ts = awg.create_ts(0, t_final)
+                env.normalize_pulse = False
+                area = abs(env.get_shape_values(ts).numpy()).sum()
+                real_amplitude = amplitude / area
+            else:
+                real_amplitude = amplitude
 
             signal = env.get_shape_values(signal_t).numpy() * real_amplitude
             res_signal[driver_ind] += signal
