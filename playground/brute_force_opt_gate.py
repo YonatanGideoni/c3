@@ -40,8 +40,33 @@ for env_params in ENVELOPES_OPT_PARAMS.values():
 
 
 @dataclass
+class OptimiserParams:
+    t_final: float = None
+    max_amp: float = 500.
+    normalise_pulses: bool = True
+
+    @property
+    def def_pulse_params(self):
+        return {
+            'amp': Quantity(value=1e-5, min_val=0.0, max_val=self.max_amp, unit="V"),
+            't_final': Quantity(value=self.t_final, min_val=0.0 * self.t_final, max_val=2.5 * self.t_final, unit="s"),
+            'xy_angle': Quantity(value=0.0, min_val=-0.5 * np.pi, max_val=2.5 * np.pi, unit='rad'),
+            'freq_offset': Quantity(value=-SIDEBAND - 3e6, min_val=-56 * 1e6, max_val=-52 * 1e6, unit='Hz 2pi'),
+            'delta': Quantity(value=-1, min_val=-5, max_val=3, unit=""),
+            'sigma': Quantity(value=self.t_final / 4, min_val=self.t_final / 8, max_val=self.t_final / 2, unit="s"),
+            'risefall': Quantity(value=self.t_final / 6, min_val=self.t_final / 10, max_val=self.t_final / 2, unit="s")
+        }
+
+    def init(self, gate: Instruction):
+        self.t_final = gate.t_end
+
+
+# TODO - improve logging
+@dataclass
 class LatentGridSamplingOptimiser:
-    exp: Experiment
+    optimiser_params: OptimiserParams = None
+    verbose: bool = False
+    debug: bool = False
 
     def setup_experiment_opt_ctrl(self, exp: Experiment, maxiter: int = 50) -> OptimalControl:
         # TODO - better set this
@@ -107,16 +132,8 @@ class LatentGridSamplingOptimiser:
                 qubitsPopulations[i, levels[i]] += population[idx]
         return qubitsPopulations
 
-    def get_params_dict(self, opt_params: set, t_final: float) -> dict:
-        def_params = {
-            'amp': Quantity(value=1e-5, min_val=0.0, max_val=500., unit="V"),
-            't_final': Quantity(value=t_final, min_val=0.0 * t_final, max_val=2.5 * t_final, unit="s"),
-            'xy_angle': Quantity(value=0.0, min_val=-0.5 * np.pi, max_val=2.5 * np.pi, unit='rad'),
-            'freq_offset': Quantity(value=-SIDEBAND - 3e6, min_val=-56 * 1e6, max_val=-52 * 1e6, unit='Hz 2pi'),
-            'delta': Quantity(value=-1, min_val=-5, max_val=3, unit=""),
-            'sigma': Quantity(value=t_final / 4, min_val=t_final / 8, max_val=t_final / 2, unit="s"),
-            'risefall': Quantity(value=t_final / 6, min_val=t_final / 10, max_val=t_final / 2, unit="s")
-        }
+    def get_params_dict(self, opt_params: set) -> dict:
+        def_params = self.optimiser_params.def_pulse_params
 
         params = {}
         for param_name in opt_params & set(def_params.keys()):
@@ -140,8 +157,8 @@ class LatentGridSamplingOptimiser:
         return best_infid, best_params
 
     def find_opt_params_for_single_env(self, exp: Experiment, amp: Quantity, cache_path: str, driver: str = None,
-                                       env_name: str = None, gate_name: str = None, debug: bool = False,
-                                       MAX_PLOT_INFID: float = 0.0, MAX_INFID_TO_CACHE: float = .3) -> tuple:
+                                       env_name: str = None, gate_name: str = None, MAX_PLOT_INFID: float = 0.0,
+                                       MAX_INFID_TO_CACHE: float = .3) -> tuple:
         infid_per_amp = {}
         params_per_amp = {}
         n_cached = 0
@@ -156,7 +173,7 @@ class LatentGridSamplingOptimiser:
             infid_per_amp[max_amp] = best_infid
             params_per_amp[max_amp] = best_params_vals
 
-            if debug:
+            if self.verbose:
                 print(f'Driver:   {driver}')
                 print(f'Envelope: {env_name}')
                 print(f'Infid.:   {best_infid:.3f}')
@@ -174,10 +191,9 @@ class LatentGridSamplingOptimiser:
                     plt.close()
 
             if best_infid < MAX_INFID_TO_CACHE:
-                print('caching')
                 good_exp_cache_path = cache_path.format(cache_num=n_cached)
                 exp.write_config(good_exp_cache_path)
-                if debug:
+                if self.verbose:
                     print('Caching to ' + good_exp_cache_path)
                     print(f'Infid={best_infid:.3f}')
 
@@ -224,20 +240,20 @@ class LatentGridSamplingOptimiser:
 
     # assumes that the experiment comes with the various devices set up. TODO - make a function that does this
     def find_opt_env_for_gate(self, exp: Experiment, gate: Instruction, base_opt_params: list, cache_dir: str,
-                              n_pulses_to_opt: int = 1, pulse_suffix: str = '', debug: bool = False):
+                              n_pulses_to_opt: int = 1, pulse_suffix: str = ''):
         gate_name = gate.get_key()
         drivers = set(exp.pmap.instructions[gate_name].comps.keys())
         best_infid_per_env = {driver: {} for driver in drivers}
         best_params_per_env = {driver: {} for driver in drivers}
         opt_map_params_per_env = {driver: {} for driver in drivers}
-        t_final = gate.t_end
 
         for env_name, env_to_opt_params in ENVELOPES_OPT_PARAMS.items():
             envelope_func = envelopes[env_name]
             env_name = env_name + pulse_suffix
             for driver in drivers:
-                params = self.get_params_dict(env_to_opt_params, t_final)
-                env = Envelope(name=env_name, normalize_pulse=True, params=params, shape=envelope_func)
+                params = self.get_params_dict(env_to_opt_params)
+                env = Envelope(name=env_name, normalize_pulse=self.optimiser_params.normalise_pulses,
+                               params=params, shape=envelope_func)
 
                 gate_with_extra_env = deepcopy(gate)
                 gate_with_extra_env.add_component(env, driver)
@@ -255,13 +271,12 @@ class LatentGridSamplingOptimiser:
                         if not os.path.isdir(subcache_dir):
                             os.mkdir(subcache_dir)
 
-                        if debug:
+                        if self.verbose:
                             print(f'Preparing subopt routine, caching to {subcache_dir}')
 
                         pulse_suffix = str(n_pulses_to_opt - 1)
                         self.find_opt_env_for_gate(exp, gate_with_extra_env, opt_params, subcache_dir,
-                                                   n_pulses_to_opt - 1,
-                                                   pulse_suffix=pulse_suffix, debug=debug)
+                                                   n_pulses_to_opt - 1, pulse_suffix=pulse_suffix)
 
                     self.run_for_amps_range(recursive_opt_for_different_amps, amp)
                 else:
@@ -271,8 +286,7 @@ class LatentGridSamplingOptimiser:
                     good_res_cache_path = os.path.join(good_res_cache_dir,
                                                        f'{driver}_{env_name}_' + '{cache_num}.hjson')
                     best_infid, best_params_vals = self.find_opt_params_for_single_env(exp, amp, good_res_cache_path,
-                                                                                       driver, env_name, gate_name,
-                                                                                       debug)
+                                                                                       driver, env_name, gate_name)
 
                     best_infid_per_env[driver][env_name] = best_infid
                     best_params_per_env[driver][env_name] = best_params_vals
@@ -296,8 +310,9 @@ class LatentGridSamplingOptimiser:
 
     def optimize_gate(self, exp: Experiment, gate: Instruction, cache_dir: str, opt_map_params: list = None,
                       n_pulses_to_add: int = 1, opt_all_at_once: bool = False,
-                      MAX_INFID_CONTINUE_RECURSION: float = 0.3,
-                      debug: bool = False):
+                      MAX_INFID_CONTINUE_RECURSION: float = 0.3):
+        self.optimiser_params.init(gate)
+
         if opt_map_params is None:
             gate_name = gate.get_key()
             drivers = set(exp.pmap.instructions[gate_name].comps.keys())
@@ -306,7 +321,7 @@ class LatentGridSamplingOptimiser:
         n_pulses_to_opt = 1 if not opt_all_at_once else n_pulses_to_add
         infid_per_env, params_per_env, opt_map_params_per_env = \
             self.find_opt_env_for_gate(exp, gate, opt_map_params, cache_dir, n_pulses_to_opt=n_pulses_to_opt,
-                                       pulse_suffix=str(n_pulses_to_add), debug=debug)
+                                       pulse_suffix=str(n_pulses_to_add))
 
         if n_pulses_to_add == 1 or opt_all_at_once:
             return
@@ -316,7 +331,7 @@ class LatentGridSamplingOptimiser:
                 if env_score > MAX_INFID_CONTINUE_RECURSION:
                     continue
 
-                if debug:
+                if self.verbose:
                     print(f'{env_name} on driver {driver} infidelity: {env_score:.3f}, '
                           f'need to add {n_pulses_to_add - 1} pulses')
 
@@ -329,8 +344,7 @@ class LatentGridSamplingOptimiser:
                 pulse_gate = pulse_exp.pmap.instructions[gate.get_key()]
                 existing_opt_map_params = deepcopy(opt_map_params_per_env[driver][env_name])
                 self.cache_opt_map_params(existing_opt_map_params, pulse_cache_dir)
-                self.optimize_gate(pulse_exp, pulse_gate, pulse_cache_dir, existing_opt_map_params, n_pulses_to_add - 1,
-                                   debug=debug)
+                self.optimize_gate(pulse_exp, pulse_gate, pulse_cache_dir, existing_opt_map_params, n_pulses_to_add - 1)
 
 
 def get_ccx_system(t_final=100e-9, qubit_lvls=4):
@@ -880,5 +894,5 @@ if __name__ == '__main__':
     parameter_map = ParameterMap(instructions=[gate], model=model, generator=generator)
     exp = Experiment(pmap=parameter_map)
 
-    LatentGridSamplingOptimiser(None).optimize_gate(exp, gate, cache_dir=dir, n_pulses_to_add=2, opt_all_at_once=False,
-                                                    debug=True)
+    LatentGridSamplingOptimiser(optimiser_params=OptimiserParams(), verbose=True, debug=True) \
+        .optimize_gate(exp, gate, cache_dir=dir, n_pulses_to_add=2, opt_all_at_once=False)
