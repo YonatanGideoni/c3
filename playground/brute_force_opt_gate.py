@@ -3,6 +3,7 @@ import os
 import pickle
 import tempfile
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import List, Callable
 
 import numpy as np
@@ -38,305 +39,298 @@ for env_params in ENVELOPES_OPT_PARAMS.values():
         env_params.add(shared_param)
 
 
-def setup_experiment_opt_ctrl(exp: Experiment, maxiter: int = 50) -> OptimalControl:
-    # TODO - better set this
-    n_qubits = len(exp.pmap.model.dims)
-    fid_subspace = [f'Q{i + 1}' for i in range(n_qubits)]
-    log_dir = os.path.join(tempfile.TemporaryDirectory().name, "c3logs")
+@dataclass
+class LatentGridSamplingOptimiser:
+    exp: Experiment
 
-    if ALEX_SYS:
-        fid_func_kwargs = {
-            "active_levels": 4
+    def setup_experiment_opt_ctrl(self, exp: Experiment, maxiter: int = 50) -> OptimalControl:
+        # TODO - better set this
+        n_qubits = len(exp.pmap.model.dims)
+        fid_subspace = [f'Q{i + 1}' for i in range(n_qubits)]
+        log_dir = os.path.join(tempfile.TemporaryDirectory().name, "c3logs")
+
+        if ALEX_SYS:
+            fid_func_kwargs = {
+                "active_levels": 4
+            }
+        else:
+            fid_func_kwargs = {
+                "active_levels": 2
+            }
+
+        opt = OptimalControl(
+            dir_path=log_dir,
+            fid_func=unitary_infid_set,
+            fid_subspace=fid_subspace,
+            pmap=exp.pmap,
+            algorithm=algorithms.lbfgs,
+            options={'maxiter': maxiter},
+            fid_func_kwargs=fid_func_kwargs
+        )
+
+        opt.set_exp(exp)
+
+        return opt
+
+    def calc_exp_fid(self, exp: Experiment) -> float:
+        dims = exp.pmap.model.dims
+        index = list(range(len(dims)))
+        return (1 - unitary_infid_set(exp.propagators, exp.pmap.instructions, index, dims)).numpy()
+
+    def get_qubits_population(self, population: np.array, dims: List[int]) -> np.array:
+        """
+        Splits the population of all levels of a system into the populations of levels per subsystem.
+        Parameters
+        ----------
+        population: np.array
+            The time dependent population of each energy level. First dimension: level index, second dimension: time.
+        dims: List[int]
+            The number of levels for each subsystem.
+        Returns
+        -------
+        np.array
+            The time-dependent population of energy levels for each subsystem. First dimension: subsystem index, second
+            dimension: level index, third dimension: time.
+        """
+        numQubits = len(dims)
+
+        # create a list of all levels
+        qubit_levels = []
+        for dim in dims:
+            qubit_levels.append(list(range(dim)))
+        combined_levels = list(itertools.product(*qubit_levels))
+
+        # calculate populations
+        qubitsPopulations = np.zeros((numQubits, dims[0], population.shape[1]))
+        for idx, levels in enumerate(combined_levels):
+            for i in range(numQubits):
+                qubitsPopulations[i, levels[i]] += population[idx]
+        return qubitsPopulations
+
+    def get_params_dict(self, opt_params: set, t_final: float) -> dict:
+        def_params = {
+            'amp': Quantity(value=1e-5, min_val=0.0, max_val=500., unit="V"),
+            't_final': Quantity(value=t_final, min_val=0.0 * t_final, max_val=2.5 * t_final, unit="s"),
+            'xy_angle': Quantity(value=0.0, min_val=-0.5 * np.pi, max_val=2.5 * np.pi, unit='rad'),
+            'freq_offset': Quantity(value=-SIDEBAND - 3e6, min_val=-56 * 1e6, max_val=-52 * 1e6, unit='Hz 2pi'),
+            'delta': Quantity(value=-1, min_val=-5, max_val=3, unit=""),
+            'sigma': Quantity(value=t_final / 4, min_val=t_final / 8, max_val=t_final / 2, unit="s"),
+            'risefall': Quantity(value=t_final / 6, min_val=t_final / 10, max_val=t_final / 2, unit="s")
         }
-    else:
-        fid_func_kwargs = {
-            "active_levels": 2
-        }
 
-    opt = OptimalControl(
-        dir_path=log_dir,
-        fid_func=unitary_infid_set,
-        fid_subspace=fid_subspace,
-        pmap=exp.pmap,
-        algorithm=algorithms.lbfgs,
-        options={'maxiter': maxiter},
-        fid_func_kwargs=fid_func_kwargs
-    )
+        params = {}
+        for param_name in opt_params & set(def_params.keys()):
+            params[param_name] = def_params[param_name]
 
-    opt.set_exp(exp)
+        assert len(params) == len(opt_params), 'Error: different number of params than required!'
 
-    return opt
+        return params
 
+    def get_opt_params_conf(self, driver: str, gate_key: str, env_name, env_to_opt_params: set) -> list:
+        PARAMS_TO_EXCLUDE = {'t_final', 'sigma'}
+        return [[(gate_key, driver, env_name, param), ] for param in env_to_opt_params - PARAMS_TO_EXCLUDE]
 
-def calc_exp_fid(exp: Experiment) -> float:
-    dims = exp.pmap.model.dims
-    index = list(range(len(dims)))
-    return (1 - unitary_infid_set(exp.propagators, exp.pmap.instructions, index, dims)).numpy()
+    def opt_single_sig_exp(self, exp: Experiment) -> tuple:
+        exp_opt = self.setup_experiment_opt_ctrl(exp)
+        exp_opt.optimize_controls()
 
+        best_infid = exp_opt.current_best_goal
+        best_params = exp_opt.current_best_params
 
-def get_qubits_population(population: np.array, dims: List[int]) -> np.array:
-    """
-    Splits the population of all levels of a system into the populations of levels per subsystem.
-    Parameters
-    ----------
-    population: np.array
-        The time dependent population of each energy level. First dimension: level index, second dimension: time.
-    dims: List[int]
-        The number of levels for each subsystem.
-    Returns
-    -------
-    np.array
-        The time-dependent population of energy levels for each subsystem. First dimension: subsystem index, second
-        dimension: level index, third dimension: time.
-    """
-    numQubits = len(dims)
+        return best_infid, best_params
 
-    # create a list of all levels
-    qubit_levels = []
-    for dim in dims:
-        qubit_levels.append(list(range(dim)))
-    combined_levels = list(itertools.product(*qubit_levels))
+    def find_opt_params_for_single_env(self, exp: Experiment, amp: Quantity, cache_path: str, driver: str = None,
+                                       env_name: str = None, gate_name: str = None, debug: bool = False,
+                                       MAX_PLOT_INFID: float = 0.0, MAX_INFID_TO_CACHE: float = .3) -> tuple:
+        infid_per_amp = {}
+        params_per_amp = {}
+        n_cached = 0
 
-    # calculate populations
-    qubitsPopulations = np.zeros((numQubits, dims[0], population.shape[1]))
-    for idx, levels in enumerate(combined_levels):
-        for i in range(numQubits):
-            qubitsPopulations[i, levels[i]] += population[idx]
-    return qubitsPopulations
+        def run_opt():
+            nonlocal n_cached
 
+            max_amp = amp.get_limits()[1]
 
-def get_params_dict(opt_params: set, t_final: float) -> dict:
-    def_params = {
-        'amp': Quantity(value=1e-5, min_val=0.0, max_val=500., unit="V"),
-        't_final': Quantity(value=t_final, min_val=0.0 * t_final, max_val=2.5 * t_final, unit="s"),
-        'xy_angle': Quantity(value=0.0, min_val=-0.5 * np.pi, max_val=2.5 * np.pi, unit='rad'),
-        'freq_offset': Quantity(value=-SIDEBAND - 3e6, min_val=-56 * 1e6, max_val=-52 * 1e6, unit='Hz 2pi'),
-        'delta': Quantity(value=-1, min_val=-5, max_val=3, unit=""),
-        'sigma': Quantity(value=t_final / 4, min_val=t_final / 8, max_val=t_final / 2, unit="s"),
-        'risefall': Quantity(value=t_final / 6, min_val=t_final / 10, max_val=t_final / 2, unit="s")
-    }
+            best_infid, best_params_vals = self.opt_single_sig_exp(exp)
 
-    params = {}
-    for param_name in opt_params & set(def_params.keys()):
-        params[param_name] = def_params[param_name]
+            infid_per_amp[max_amp] = best_infid
+            params_per_amp[max_amp] = best_params_vals
 
-    assert len(params) == len(opt_params), 'Error: different number of params than required!'
-
-    return params
-
-
-def get_opt_params_conf(driver: str, gate_key: str, env_name, env_to_opt_params: set) -> list:
-    PARAMS_TO_EXCLUDE = {'t_final', 'sigma'}
-    return [[(gate_key, driver, env_name, param), ] for param in env_to_opt_params - PARAMS_TO_EXCLUDE]
-
-
-def opt_single_sig_exp(exp: Experiment) -> tuple:
-    exp_opt = setup_experiment_opt_ctrl(exp)
-    exp_opt.optimize_controls()
-
-    best_infid = exp_opt.current_best_goal
-    best_params = exp_opt.current_best_params
-
-    return best_infid, best_params
-
-
-def find_opt_params_for_single_env(exp: Experiment, amp: Quantity, cache_path: str, driver: str = None,
-                                   env_name: str = None, gate_name: str = None, debug: bool = False,
-                                   MAX_PLOT_INFID: float = 0.0, MAX_INFID_TO_CACHE: float = .3) -> tuple:
-    infid_per_amp = {}
-    params_per_amp = {}
-    n_cached = 0
-
-    def run_opt():
-        nonlocal n_cached
-
-        max_amp = amp.get_limits()[1]
-
-        best_infid, best_params_vals = opt_single_sig_exp(exp)
-
-        infid_per_amp[max_amp] = best_infid
-        params_per_amp[max_amp] = best_params_vals
-
-        if debug:
-            print(f'Driver:   {driver}')
-            print(f'Envelope: {env_name}')
-            print(f'Infid.:   {best_infid:.3f}')
-            print(f'Amplitude:{amp.get_value():.1f}')
-            print(f'Max amp.: {max_amp:.1f}')
-
-            if best_infid < MAX_PLOT_INFID:
-                # TODO - add more plotting functionality
-                psi_init = get_init_state(exp)
-                plot_dynamics(exp, psi_init, [gate_name])
-                plt.title(f'{driver}-{env_name}, F={best_infid:.3f}')
-
-                wait_for_not_mouse_press()
-
-                plt.close()
-
-        if best_infid < MAX_INFID_TO_CACHE:
-            print('caching')
-            good_exp_cache_path = cache_path.format(cache_num=n_cached)
-            exp.write_config(good_exp_cache_path)
             if debug:
-                print('Caching to ' + good_exp_cache_path)
-                print(f'Infid={best_infid:.3f}')
+                print(f'Driver:   {driver}')
+                print(f'Envelope: {env_name}')
+                print(f'Infid.:   {best_infid:.3f}')
+                print(f'Amplitude:{amp.get_value():.1f}')
+                print(f'Max amp.: {max_amp:.1f}')
 
-            n_cached += 1
+                if best_infid < MAX_PLOT_INFID:
+                    # TODO - add more plotting functionality
+                    psi_init = get_init_state(exp)
+                    plot_dynamics(exp, psi_init, [gate_name])
+                    plt.title(f'{driver}-{env_name}, F={best_infid:.3f}')
 
-    run_for_amps_range(run_opt, amp)
+                    wait_for_not_mouse_press()
 
-    best_overall_infid = np.inf
-    best_overall_params = None
-    for amp in infid_per_amp.keys():
-        if (infid := infid_per_amp[amp]) < best_overall_infid:
-            best_overall_infid = infid
-            best_overall_params = params_per_amp[amp]
+                    plt.close()
 
-    return best_overall_infid, best_overall_params
+            if best_infid < MAX_INFID_TO_CACHE:
+                print('caching')
+                good_exp_cache_path = cache_path.format(cache_num=n_cached)
+                exp.write_config(good_exp_cache_path)
+                if debug:
+                    print('Caching to ' + good_exp_cache_path)
+                    print(f'Infid={best_infid:.3f}')
 
+                n_cached += 1
 
-def get_carrier_opt_params(drivers: set, gate_name: str) -> list:
-    carrier_opt_params = {'framechange'}
-    if ALEX_SYS:
-        return [[(gate_name, driver, f'carrier_{driver}_{i}', carr_param)] for driver in drivers
-                for carr_param in carrier_opt_params for i in (1, 2)]
+        self.run_for_amps_range(run_opt, amp)
 
-    return [[(gate_name, driver, 'carrier', carr_param)] for driver in drivers for carr_param in carrier_opt_params]
+        best_overall_infid = np.inf
+        best_overall_params = None
+        for amp in infid_per_amp.keys():
+            if (infid := infid_per_amp[amp]) < best_overall_infid:
+                best_overall_infid = infid
+                best_overall_params = params_per_amp[amp]
 
+        return best_overall_infid, best_overall_params
 
-def get_cached_exp_path(cache_dir: str, driver: str, env_name: str) -> str:
-    return os.path.join(cache_dir, f'best_{driver}_{env_name}.hjson')
+    def get_carrier_opt_params(self, drivers: set, gate_name: str) -> list:
+        carrier_opt_params = {'framechange'}
+        if ALEX_SYS:
+            return [[(gate_name, driver, f'carrier_{driver}_{i}', carr_param)] for driver in drivers
+                    for carr_param in carrier_opt_params for i in (1, 2)]
 
+        return [[(gate_name, driver, 'carrier', carr_param)] for driver in drivers for carr_param in carrier_opt_params]
 
-def cache_exp(exp: Experiment, cache_dir: str, driver, env_name: str, params_vals: list = None):
-    if params_vals is not None:
-        exp.pmap.set_parameters(params_vals, extend_bounds=True)
+    def get_cached_exp_path(self, cache_dir: str, driver: str, env_name: str) -> str:
+        return os.path.join(cache_dir, f'best_{driver}_{env_name}.hjson')
 
-    exp.pmap.update_parameters()
-    exp.compute_propagators()
-    cache_path = get_cached_exp_path(cache_dir, driver, env_name)
-    exp.write_config(cache_path)
+    def cache_exp(self, exp: Experiment, cache_dir: str, driver, env_name: str, params_vals: list = None):
+        if params_vals is not None:
+            exp.pmap.set_parameters(params_vals, extend_bounds=True)
 
+        exp.pmap.update_parameters()
+        exp.compute_propagators()
+        cache_path = self.get_cached_exp_path(cache_dir, driver, env_name)
+        exp.write_config(cache_path)
 
-def run_for_amps_range(func: Callable, amp, MIN_AMP: float = 5, AMP_RED_FCTR: float = 0.5, ):
-    while (max_amp := amp.get_limits()[1]) > MIN_AMP:
-        amp.set_value(max_amp / 2)
+    def run_for_amps_range(self, func: Callable, amp, MIN_AMP: float = 5, AMP_RED_FCTR: float = 0.5, ):
+        while (max_amp := amp.get_limits()[1]) > MIN_AMP:
+            amp.set_value(max_amp / 2)
 
-        func()
+            func()
 
-        amp._set_limits(0, max_amp * AMP_RED_FCTR)
+            amp._set_limits(0, max_amp * AMP_RED_FCTR)
 
-
-# assumes that the experiment comes with the various devices set up. TODO - make a function that does this
-def find_opt_env_for_gate(exp: Experiment, gate: Instruction, base_opt_params: list, cache_dir: str,
-                          n_pulses_to_opt: int = 1, pulse_suffix: str = '', debug: bool = False):
-    gate_name = gate.get_key()
-    drivers = set(exp.pmap.instructions[gate_name].comps.keys())
-    best_infid_per_env = {driver: {} for driver in drivers}
-    best_params_per_env = {driver: {} for driver in drivers}
-    opt_map_params_per_env = {driver: {} for driver in drivers}
-    t_final = gate.t_end
-
-    for env_name, env_to_opt_params in ENVELOPES_OPT_PARAMS.items():
-        envelope_func = envelopes[env_name]
-        env_name = env_name + pulse_suffix
-        for driver in drivers:
-            params = get_params_dict(env_to_opt_params, t_final)
-            env = Envelope(name=env_name, normalize_pulse=True, params=params, shape=envelope_func)
-
-            gate_with_extra_env = deepcopy(gate)
-            gate_with_extra_env.add_component(env, driver)
-            base_instructions = deepcopy(exp.pmap.instructions)
-            exp.pmap.instructions.update({gate_name: gate_with_extra_env})
-
-            opt_params = get_opt_params_conf(driver, gate_name, env_name, env_to_opt_params) + base_opt_params
-            exp.pmap.update_parameters()
-            exp.pmap.set_opt_map(opt_params)
-            amp = params['amp']
-            if n_pulses_to_opt > 1:
-                def recursive_opt_for_different_amps():
-                    max_amp = amp.get_limits()[1]
-                    subcache_dir = os.path.join(cache_dir, env_name + f'_{driver}_max_amp={max_amp:.1f}_sub_opt')
-                    if not os.path.isdir(subcache_dir):
-                        os.mkdir(subcache_dir)
-
-                    if debug:
-                        print(f'Preparing subopt routine, caching to {subcache_dir}')
-
-                    pulse_suffix = str(n_pulses_to_opt - 1)
-                    find_opt_env_for_gate(exp, gate_with_extra_env, opt_params, subcache_dir, n_pulses_to_opt - 1,
-                                          pulse_suffix=pulse_suffix, debug=debug)
-
-                run_for_amps_range(recursive_opt_for_different_amps, amp)
-            else:
-                good_res_cache_dir = os.path.join(cache_dir, 'good_infid_exps')
-                if not os.path.isdir(good_res_cache_dir):
-                    os.mkdir(good_res_cache_dir)
-                good_res_cache_path = os.path.join(good_res_cache_dir, f'{driver}_{env_name}_' + '{cache_num}.hjson')
-                best_infid, best_params_vals = find_opt_params_for_single_env(exp, amp, good_res_cache_path, driver,
-                                                                              env_name, gate_name, debug)
-
-                best_infid_per_env[driver][env_name] = best_infid
-                best_params_per_env[driver][env_name] = best_params_vals
-                opt_map_params_per_env[driver][env_name] = opt_params
-
-                cache_exp(exp, cache_dir, driver, env_name, best_params_vals)
-
-            exp.pmap.instructions = base_instructions
-
-    return best_infid_per_env, best_params_per_env, opt_map_params_per_env
-
-
-def cache_opt_map_params(opt_map_params: list, cache_dir: str):
-    cache_path = os.path.join(cache_dir, 'base_opt_map_params.pkl')
-    with open(cache_path, 'wb') as file:
-        pickle.dump(opt_map_params, file)
-
-
-def read_cached_opt_map_params(cache_dir: str) -> list:
-    cache_path = os.path.join(cache_dir, 'base_opt_map_params.pkl')
-    with open(cache_path, 'rb') as file:
-        return pickle.load(file)
-
-
-def optimize_gate(exp: Experiment, gate: Instruction, cache_dir: str, opt_map_params: list = None,
-                  n_pulses_to_add: int = 1, opt_all_at_once: bool = False, MAX_INFID_CONTINUE_RECURSION: float = 0.3,
-                  debug: bool = False):
-    if opt_map_params is None:
+    # assumes that the experiment comes with the various devices set up. TODO - make a function that does this
+    def find_opt_env_for_gate(self, exp: Experiment, gate: Instruction, base_opt_params: list, cache_dir: str,
+                              n_pulses_to_opt: int = 1, pulse_suffix: str = '', debug: bool = False):
         gate_name = gate.get_key()
         drivers = set(exp.pmap.instructions[gate_name].comps.keys())
-        opt_map_params = get_carrier_opt_params(drivers, gate_name)
+        best_infid_per_env = {driver: {} for driver in drivers}
+        best_params_per_env = {driver: {} for driver in drivers}
+        opt_map_params_per_env = {driver: {} for driver in drivers}
+        t_final = gate.t_end
 
-    n_pulses_to_opt = 1 if not opt_all_at_once else n_pulses_to_add
-    infid_per_env, params_per_env, opt_map_params_per_env = find_opt_env_for_gate(exp, gate, opt_map_params, cache_dir,
-                                                                                  n_pulses_to_opt=n_pulses_to_opt,
-                                                                                  pulse_suffix=str(n_pulses_to_add),
-                                                                                  debug=debug)
+        for env_name, env_to_opt_params in ENVELOPES_OPT_PARAMS.items():
+            envelope_func = envelopes[env_name]
+            env_name = env_name + pulse_suffix
+            for driver in drivers:
+                params = self.get_params_dict(env_to_opt_params, t_final)
+                env = Envelope(name=env_name, normalize_pulse=True, params=params, shape=envelope_func)
 
-    if n_pulses_to_add == 1 or opt_all_at_once:
-        return
+                gate_with_extra_env = deepcopy(gate)
+                gate_with_extra_env.add_component(env, driver)
+                base_instructions = deepcopy(exp.pmap.instructions)
+                exp.pmap.instructions.update({gate_name: gate_with_extra_env})
 
-    for driver, env_scores in infid_per_env.items():
-        for env_name, env_score in env_scores.items():
-            if env_score > MAX_INFID_CONTINUE_RECURSION:
-                continue
+                opt_params = self.get_opt_params_conf(driver, gate_name, env_name, env_to_opt_params) + base_opt_params
+                exp.pmap.update_parameters()
+                exp.pmap.set_opt_map(opt_params)
+                amp = params['amp']
+                if n_pulses_to_opt > 1:
+                    def recursive_opt_for_different_amps():
+                        max_amp = amp.get_limits()[1]
+                        subcache_dir = os.path.join(cache_dir, env_name + f'_{driver}_max_amp={max_amp:.1f}_sub_opt')
+                        if not os.path.isdir(subcache_dir):
+                            os.mkdir(subcache_dir)
 
-            if debug:
-                print(f'{env_name} on driver {driver} infidelity: {env_score:.3f}, '
-                      f'need to add {n_pulses_to_add - 1} pulses')
+                        if debug:
+                            print(f'Preparing subopt routine, caching to {subcache_dir}')
 
-            pulse_cache_dir = os.path.join(cache_dir, f'{driver}_{env_name}')
-            if not os.path.isdir(pulse_cache_dir):
-                os.mkdir(pulse_cache_dir)
+                        pulse_suffix = str(n_pulses_to_opt - 1)
+                        self.find_opt_env_for_gate(exp, gate_with_extra_env, opt_params, subcache_dir,
+                                                   n_pulses_to_opt - 1,
+                                                   pulse_suffix=pulse_suffix, debug=debug)
 
-            pulse_exp = Experiment()
-            pulse_exp.read_config(get_cached_exp_path(cache_dir, driver, env_name))
-            pulse_gate = pulse_exp.pmap.instructions[gate.get_key()]
-            existing_opt_map_params = deepcopy(opt_map_params_per_env[driver][env_name])
-            cache_opt_map_params(existing_opt_map_params, pulse_cache_dir)
-            optimize_gate(pulse_exp, pulse_gate, pulse_cache_dir, existing_opt_map_params, n_pulses_to_add - 1,
-                          debug=debug)
+                    self.run_for_amps_range(recursive_opt_for_different_amps, amp)
+                else:
+                    good_res_cache_dir = os.path.join(cache_dir, 'good_infid_exps')
+                    if not os.path.isdir(good_res_cache_dir):
+                        os.mkdir(good_res_cache_dir)
+                    good_res_cache_path = os.path.join(good_res_cache_dir,
+                                                       f'{driver}_{env_name}_' + '{cache_num}.hjson')
+                    best_infid, best_params_vals = self.find_opt_params_for_single_env(exp, amp, good_res_cache_path,
+                                                                                       driver, env_name, gate_name,
+                                                                                       debug)
+
+                    best_infid_per_env[driver][env_name] = best_infid
+                    best_params_per_env[driver][env_name] = best_params_vals
+                    opt_map_params_per_env[driver][env_name] = opt_params
+
+                    self.cache_exp(exp, cache_dir, driver, env_name, best_params_vals)
+
+                exp.pmap.instructions = base_instructions
+
+        return best_infid_per_env, best_params_per_env, opt_map_params_per_env
+
+    def cache_opt_map_params(self, opt_map_params: list, cache_dir: str):
+        cache_path = os.path.join(cache_dir, 'base_opt_map_params.pkl')
+        with open(cache_path, 'wb') as file:
+            pickle.dump(opt_map_params, file)
+
+    def read_cached_opt_map_params(self, cache_dir: str) -> list:
+        cache_path = os.path.join(cache_dir, 'base_opt_map_params.pkl')
+        with open(cache_path, 'rb') as file:
+            return pickle.load(file)
+
+    def optimize_gate(self, exp: Experiment, gate: Instruction, cache_dir: str, opt_map_params: list = None,
+                      n_pulses_to_add: int = 1, opt_all_at_once: bool = False,
+                      MAX_INFID_CONTINUE_RECURSION: float = 0.3,
+                      debug: bool = False):
+        if opt_map_params is None:
+            gate_name = gate.get_key()
+            drivers = set(exp.pmap.instructions[gate_name].comps.keys())
+            opt_map_params = self.get_carrier_opt_params(drivers, gate_name)
+
+        n_pulses_to_opt = 1 if not opt_all_at_once else n_pulses_to_add
+        infid_per_env, params_per_env, opt_map_params_per_env = \
+            self.find_opt_env_for_gate(exp, gate, opt_map_params, cache_dir, n_pulses_to_opt=n_pulses_to_opt,
+                                       pulse_suffix=str(n_pulses_to_add), debug=debug)
+
+        if n_pulses_to_add == 1 or opt_all_at_once:
+            return
+
+        for driver, env_scores in infid_per_env.items():
+            for env_name, env_score in env_scores.items():
+                if env_score > MAX_INFID_CONTINUE_RECURSION:
+                    continue
+
+                if debug:
+                    print(f'{env_name} on driver {driver} infidelity: {env_score:.3f}, '
+                          f'need to add {n_pulses_to_add - 1} pulses')
+
+                pulse_cache_dir = os.path.join(cache_dir, f'{driver}_{env_name}')
+                if not os.path.isdir(pulse_cache_dir):
+                    os.mkdir(pulse_cache_dir)
+
+                pulse_exp = Experiment()
+                pulse_exp.read_config(self.get_cached_exp_path(cache_dir, driver, env_name))
+                pulse_gate = pulse_exp.pmap.instructions[gate.get_key()]
+                existing_opt_map_params = deepcopy(opt_map_params_per_env[driver][env_name])
+                self.cache_opt_map_params(existing_opt_map_params, pulse_cache_dir)
+                self.optimize_gate(pulse_exp, pulse_gate, pulse_cache_dir, existing_opt_map_params, n_pulses_to_add - 1,
+                                   debug=debug)
 
 
 def get_ccx_system(t_final=100e-9, qubit_lvls=4):
@@ -870,15 +864,15 @@ def get_2q_system(gate_name: str, qubit_lvls=4, __t_final=45e-9, doubly_resonant
 
 
 if __name__ == '__main__':
-    # t_final = 50e-9
-    # gate, model, generator = get_2q_system('cx', __t_final=t_final)
-    # dir = f'cnot_{t_final * 1e9:.0f}ns_all_signals_ftgu'
+    t_final = 45e-9
+    gate, model, generator = get_2q_system('cx', __t_final=t_final)
+    dir = f'cnot_{t_final * 1e9:.0f}ns_trial'
     # dir = f'test_high_anharm_cnot_{t_final * 1e9:.0f}ns_all_signals_ftgu'
 
     # gate, dir, model, generator = get_ccx_system(t_final=100e-9, qubit_lvls=3)
 
-    ALEX_SYS = True
-    gate, dir, model, generator = get_alex_system('alex_sys_output_dir')
+    # ALEX_SYS = True
+    # gate, dir, model, generator = get_alex_system('alex_sys_output_dir')
 
     if not os.path.isdir(dir):
         os.mkdir(dir)
@@ -886,4 +880,5 @@ if __name__ == '__main__':
     parameter_map = ParameterMap(instructions=[gate], model=model, generator=generator)
     exp = Experiment(pmap=parameter_map)
 
-    optimize_gate(exp, gate, cache_dir=dir, n_pulses_to_add=3, opt_all_at_once=False, debug=True)
+    LatentGridSamplingOptimiser(None).optimize_gate(exp, gate, cache_dir=dir, n_pulses_to_add=2, opt_all_at_once=False,
+                                                    debug=True)
