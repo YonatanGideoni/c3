@@ -10,10 +10,6 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 import c3.generator.devices as devices
-from alex_system.four_level_transmons import custom_gates
-from alex_system.four_level_transmons.DataOutput import DataOutput
-from alex_system.four_level_transmons.utilities import createQubits, createChainCouplings, createDrives, \
-    createGenerator2LOs
 from c3.c3objs import Quantity
 from c3.experiment import Experiment
 from c3.generator.generator import Generator
@@ -29,7 +25,6 @@ from c3.signal.pulse import Envelope
 from playground.plot_utils import wait_for_not_mouse_press, plot_dynamics, get_init_state
 
 SIDEBAND = 50e6
-ALEX_SYS = False
 
 __shared_params = {'amp', 'xy_angle', 'freq_offset', 't_final', 'delta'}
 ENVELOPES_OPT_PARAMS = {'gaussian_nonorm': {'sigma'}, 'hann': set(), 'blackman_window': set(),
@@ -74,15 +69,6 @@ class LatentGridSamplingOptimiser:
         fid_subspace = [f'Q{i + 1}' for i in range(n_qubits)]
         log_dir = os.path.join(tempfile.TemporaryDirectory().name, "c3logs")
 
-        if ALEX_SYS:
-            fid_func_kwargs = {
-                "active_levels": 4
-            }
-        else:
-            fid_func_kwargs = {
-                "active_levels": 2
-            }
-
         opt = OptimalControl(
             dir_path=log_dir,
             fid_func=unitary_infid_set,
@@ -90,7 +76,6 @@ class LatentGridSamplingOptimiser:
             pmap=exp.pmap,
             algorithm=algorithms.lbfgs,
             options={'maxiter': maxiter},
-            fid_func_kwargs=fid_func_kwargs
         )
 
         opt.set_exp(exp)
@@ -212,9 +197,6 @@ class LatentGridSamplingOptimiser:
 
     def get_carrier_opt_params(self, drivers: set, gate_name: str) -> list:
         carrier_opt_params = {'framechange'}
-        if ALEX_SYS:
-            return [[(gate_name, driver, f'carrier_{driver}_{i}', carr_param)] for driver in drivers
-                    for carr_param in carrier_opt_params for i in (1, 2)]
 
         return [[(gate_name, driver, 'carrier', carr_param)] for driver in drivers for carr_param in carrier_opt_params]
 
@@ -575,106 +557,6 @@ def get_ccx_system(t_final=100e-9, qubit_lvls=4):
     return gate, dir, model, generator
 
 
-def get_alex_system(output_dir='alex_sys_output_dir', t_final=500e-9):
-    qubit_levels = [4, 4]
-    qubit_frequencies = [5e9, 5e9]
-    anharmonicities = [-300e6, -300e6]
-    t1s = [25e-6, 25e-6]
-    t2stars = [35e-6, 35e-6]
-    qubit_temps = 50e-3
-    couplingStrength = 20e6
-    isDressed = True
-    sim_res = 50e9
-    awg_res = 2e9
-
-    print("qubits frequencies: ", qubit_frequencies, "anharmonicities: ", anharmonicities,
-          "coupling: ", couplingStrength)
-
-    level_labels_transmon = ["|0,0\\rangle", "|0,1\\rangle", "|1,0\\rangle", "|1,1\\rangle"]
-    for i in range(len(level_labels_transmon), max(qubit_levels)):
-        level_labels_transmon.append("leakage")
-    level_labels = []
-    level_labels_with_leakage = []
-    level_labels_short = []
-    for i in range(qubit_levels[0]):
-        for j in range(qubit_levels[1]):
-            if i > 3 or j > 3:
-                level_labels_with_leakage.append("leakage")
-                level_labels_short.append(None)
-            else:
-                s = f"${level_labels_transmon[i]},{level_labels_transmon[j]}$"
-                level_labels.append(s)
-                level_labels_with_leakage.append(s)
-                level_labels_short.append(f"{i},{j}")
-
-    qubits = createQubits(qubit_levels, qubit_frequencies, anharmonicities,
-                          t1s, t2stars, qubit_temps)
-    coupling = createChainCouplings([couplingStrength], qubits)
-    drives = createDrives(qubits)
-
-    # Create the model
-    model = Model(qubits, coupling + drives)
-    model.set_lindbladian(False)
-    model.set_dressed(isDressed)
-    model.set_FR(False)  # change?
-
-    generator = createGenerator2LOs(drives, sim_res=sim_res, awg_res=awg_res)
-
-    # Envelopes and carriers
-    carrier_freqs = [
-        [40e6, 563e6],
-        [121e6, 644e6]
-    ]
-
-    carrier_framechange = [
-        [0.01, 0.01],
-        [0.01, 0.01]
-    ]
-
-    envelopesForDrive = {d.name: [] for d in drives}
-    carriers = []
-    carriersForDrive = {d.name: [] for d in drives}
-
-    # create carriers and envelopes
-    for idx in [0, 1]:
-        for i in range(0, len(carrier_freqs[idx])):
-            carrier_parameters = {
-                "freq": Quantity(value=carrier_freqs[idx][i], min_val=0.98 * carrier_freqs[idx][i],
-                                 max_val=1.02 * carrier_freqs[idx][i], unit="Hz 2pi"),
-                "framechange": Quantity(value=carrier_framechange[idx][i], min_val=-np.pi, max_val=3 * np.pi,
-                                        unit="rad"),
-            }
-            carrier = pulse.Carrier(
-                name=f"carrier_{drives[idx].name}_{i + 1}",
-                desc="Frequency of the local oscillator",
-                params=carrier_parameters,
-            )
-            carriers.append(carrier)
-            carriersForDrive[drives[idx].name].append(carrier)
-
-    print("carrier: ", [[carrier.params["freq"] for carrier in carriers] for carriers in carriersForDrive.values()])
-    print("amp: ", [[env.params["amp"] for env in envelopes] for envelopes in envelopesForDrive.values()])
-
-    ideal_gate = custom_gates.GATE_iSWAP_t1q2_t2q2
-
-    gate = gates.Instruction(
-        name="iswap_t1q2_t2q2",
-        targets=[0, 1],
-        t_start=0.0,
-        t_end=t_final,
-        channels=[d.name for d in drives],
-        ideal=ideal_gate,
-    )
-
-    for drive in drives:
-        for env in envelopesForDrive[drive.name]:
-            gate.add_component(deepcopy(env), drive.name)
-        for carrier in carriersForDrive[drive.name]:
-            gate.add_component(deepcopy(carrier), drive.name)
-
-    return gate, output_dir, model, generator
-
-
 def get_2q_system(gate_name: str, qubit_lvls=4, __t_final=45e-9, doubly_resonant: bool = False):
     freq_q1 = 5e9
     anhar_q1 = -310e6
@@ -884,9 +766,6 @@ if __name__ == '__main__':
     # dir = f'test_high_anharm_cnot_{t_final * 1e9:.0f}ns_all_signals_ftgu'
 
     # gate, dir, model, generator = get_ccx_system(t_final=100e-9, qubit_lvls=3)
-
-    # ALEX_SYS = True
-    # gate, dir, model, generator = get_alex_system('alex_sys_output_dir')
 
     if not os.path.isdir(dir):
         os.mkdir(dir)
