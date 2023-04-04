@@ -79,11 +79,4 @@ def plot_good_results(base_dir: str, min_plot_fid: float = 0, delete_bad_res: bo
 
 
 if __name__ == '__main__':
-    # exp_path = 'autopt_cache/best_d2_gaussian_nonorm2.hjson'
-    # exp_cache_dir = 'autopt_cache/d2_gaussian_nonorm2'
-    #
-    # run_gate_exp_opt(exp_path, exp_cache_dir)
-
-    plot_good_results(r'high_anharm_cnot_50ns_all_signals_ftgu')
-
-    # get_alex_system()
+    plot_good_results(r'../cx_qsl_initial_ftgu_2pulse/20ns_ftgu', min_plot_fid=0.996, delete_bad_res=False)

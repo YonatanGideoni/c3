@@ -25,6 +25,6 @@ def run_cx(t_final: float, base_dir: str = 'cx_qsl'):
 
 
 if __name__ == '__main__':
-    for t_final in np.arange(10e-9, 41e-9, 5e-9):
+    for t_final in np.arange(30e-9, 41e-9, 5e-9):
         print(f'Optimising CX for t_final={t_final * 10 ** 9:.0f}[ns]')
         run_cx(t_final, base_dir='cx_qsl_initial_ftgu_2pulse')
