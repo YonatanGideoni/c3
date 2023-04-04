@@ -2,6 +2,7 @@ import itertools
 import os
 import pickle
 import tempfile
+import warnings
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import List, Callable
@@ -38,10 +39,19 @@ for env_params in ENVELOPES_OPT_PARAMS.values():
 class OptimiserParams:
     t_final: float = None
     max_amp: float = 500.
+    min_amp: float = 5.
     normalise_pulses: bool = True
+    randomise_amps_order: bool = True
+    amp_red_fctr: float = 0.5
+    max_iter: int = 50
+    __WARN_MAX_AMP: float = 10.
 
     @property
     def def_pulse_params(self):
+        if not self.normalise_pulses and self.max_amp > self.__WARN_MAX_AMP:
+            warnings.warn(f'Maximum amplitude is {self.max_amp} but pulses are unnormalised, '
+                          f'are you sure that this is ok?')
+
         return {
             'amp': Quantity(value=1e-5, min_val=0.0, max_val=self.max_amp, unit="V"),
             't_final': Quantity(value=self.t_final, min_val=0.0 * self.t_final, max_val=2.5 * self.t_final, unit="s"),
@@ -63,8 +73,7 @@ class LatentGridSamplingOptimiser:
     verbose: bool = False
     debug: bool = False
 
-    def setup_experiment_opt_ctrl(self, exp: Experiment, maxiter: int = 50) -> OptimalControl:
-        # TODO - better set this
+    def setup_experiment_opt_ctrl(self, exp: Experiment) -> OptimalControl:
         n_qubits = len(exp.pmap.model.dims)
         fid_subspace = [f'Q{i + 1}' for i in range(n_qubits)]
         log_dir = os.path.join(tempfile.TemporaryDirectory().name, "c3logs")
@@ -75,7 +84,7 @@ class LatentGridSamplingOptimiser:
             fid_subspace=fid_subspace,
             pmap=exp.pmap,
             algorithm=algorithms.lbfgs,
-            options={'maxiter': maxiter},
+            options={'maxiter': self.optimiser_params.max_iter},
         )
 
         opt.set_exp(exp)
@@ -212,15 +221,23 @@ class LatentGridSamplingOptimiser:
         cache_path = self.get_cached_exp_path(cache_dir, driver, env_name)
         exp.write_config(cache_path)
 
-    def run_for_amps_range(self, func: Callable, amp, MIN_AMP: float = 5, AMP_RED_FCTR: float = 0.5, ):
-        while (max_amp := amp.get_limits()[1]) > MIN_AMP:
-            amp.set_value(max_amp / 2)
+    def run_for_amps_range(self, func: Callable, pulse_amp: Quantity):
+        max_amp = pulse_amp.get_limits()[1]
+        min_amp = self.optimiser_params.min_amp
+        amp_red_fctr = self.optimiser_params.amp_red_fctr
+
+        relevant_amps = (1 / amp_red_fctr) ** np.arange(np.log2(min_amp), np.log2(max_amp))
+
+        if self.optimiser_params.randomise_amps_order:
+            np.random.shuffle(relevant_amps)
+
+        for amp in relevant_amps:
+            pulse_amp._set_limits(0, amp / amp_red_fctr)
+            pulse_amp.set_value(amp)
 
             func()
 
-            amp._set_limits(0, max_amp * AMP_RED_FCTR)
-
-    # assumes that the experiment comes with the various devices set up. TODO - make a function that does this
+    # assumes that the experiment comes with the various devices set up.
     def find_opt_env_for_gate(self, exp: Experiment, gate: Instruction, base_opt_params: list, cache_dir: str,
                               n_pulses_to_opt: int = 1, pulse_suffix: str = ''):
         gate_name = gate.get_key()
@@ -292,7 +309,7 @@ class LatentGridSamplingOptimiser:
 
     def optimize_gate(self, exp: Experiment, gate: Instruction, cache_dir: str, opt_map_params: list = None,
                       n_pulses_to_add: int = 1, opt_all_at_once: bool = False,
-                      MAX_INFID_CONTINUE_RECURSION: float = 0.3):
+                      MAX_INFID_TO_CONTINUE_RECURSION: float = 0.3):
         self.optimiser_params.init(gate)
 
         if opt_map_params is None:
@@ -310,7 +327,7 @@ class LatentGridSamplingOptimiser:
 
         for driver, env_scores in infid_per_env.items():
             for env_name, env_score in env_scores.items():
-                if env_score > MAX_INFID_CONTINUE_RECURSION:
+                if env_score > MAX_INFID_TO_CONTINUE_RECURSION:
                     continue
 
                 if self.verbose:
