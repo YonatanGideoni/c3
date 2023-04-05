@@ -41,7 +41,7 @@ class OptimiserParams:
     max_amp: float = 500.
     min_amp: float = 5.
     normalise_pulses: bool = True
-    randomise_amps_order: bool = True
+    randomise_amps_order: bool = False
     amp_red_fctr: float = 0.5
     max_iter: int = 50
     __WARN_MAX_AMP: float = 10.
@@ -226,7 +226,7 @@ class LatentGridSamplingOptimiser:
         min_amp = self.optimiser_params.min_amp
         amp_red_fctr = self.optimiser_params.amp_red_fctr
 
-        relevant_amps = (1 / amp_red_fctr) ** np.arange(np.log2(min_amp), np.log2(max_amp))
+        relevant_amps = (1 / amp_red_fctr) ** np.arange(np.log2(min_amp), np.log2(max_amp))[::-1]
 
         if self.optimiser_params.randomise_amps_order:
             np.random.shuffle(relevant_amps)
