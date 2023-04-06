@@ -126,21 +126,24 @@ def get_1q_system(gate_name, __t_final, __anharm):
 
 
 # TODO - set basis pulses
-# TODO - make normalise_pulse be False and make the min/max amp be sensible
 # TODO - make sure it works
 if __name__ == '__main__':
     t_final = 7e-9
-    anharm = -310e6
-    gate, model, generator = get_1q_system('rx90p', __t_final=t_final, __anharm=anharm)
-    dir = f'cnot_{t_final * 1e9:.0f}ns_trial'
+    min_anharm = -10e6
+    max_anharm = -500e6
+    
+    for anharm in np.linspace(min_anharm, max_anharm, num=15):
+        gate, model, generator = get_1q_system('rx90p', __t_final=t_final, __anharm=anharm)
+        dir = f'rx90_{t_final * 1e9:.0f}ns_{anharm / 1e6:.0f}MHz_drag_recr_trial'
 
-    if not os.path.isdir(dir):
-        os.mkdir(dir)
+        if not os.path.isdir(dir):
+            os.mkdir(dir)
 
-    parameter_map = ParameterMap(instructions=[gate], model=model, generator=generator)
-    exp = Experiment(pmap=parameter_map)
+        parameter_map = ParameterMap(instructions=[gate], model=model, generator=generator)
+        exp = Experiment(pmap=parameter_map)
 
-    opt_params = OptimiserParams(normalise_pulses=False, max_amp=2, min_amp=1e-2)
+        opt_params = OptimiserParams(normalise_pulses=False, max_amp=2, min_amp=1e-2,
+                                     rel_envs=('gaussian_nonorm', 'gaussian_der_nonorm'))
 
-    LatentGridSamplingOptimiser(optimiser_params=opt_params, verbose=True, debug=True) \
-        .optimize_gate(exp, gate, cache_dir=dir, n_pulses_to_add=2, opt_all_at_once=False)
+        LatentGridSamplingOptimiser(optimiser_params=opt_params, verbose=True, debug=True) \
+            .optimize_gate(exp, gate, cache_dir=dir, n_pulses_to_add=2, opt_all_at_once=False)
