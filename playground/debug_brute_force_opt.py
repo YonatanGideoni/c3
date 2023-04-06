@@ -3,18 +3,9 @@ import os
 from matplotlib import pyplot as plt
 
 from c3.experiment import Experiment
-from playground.brute_force_opt_gate import read_cached_opt_map_params, find_opt_env_for_gate, calc_exp_fid
 from playground.plot_utils import plot_dynamics, get_init_state, wait_for_not_mouse_press, plot_signal, \
     plot_splitted_population
-
-
-def run_gate_exp_opt(exp_path: str, exp_cache_dir, debug_cache_dir='debug_cache', gate_name='cnot[0, 1]'):
-    exp = Experiment()
-    exp.read_config(exp_path)
-    opt_map_params = read_cached_opt_map_params(exp_cache_dir)
-
-    gate = exp.pmap.instructions[gate_name]
-    find_opt_env_for_gate(exp, gate, opt_map_params, cache_dir=debug_cache_dir, debug=True)
+from playground.utils import calc_exp_fid
 
 
 def plot_exps_in_dir(dir_path: str, min_plot_fid: float = 0., delete_bad_res: bool = False):
@@ -33,7 +24,7 @@ def plot_exps_in_dir(dir_path: str, min_plot_fid: float = 0., delete_bad_res: bo
 
         print()
         print(exp_path)
-        print(f'Fid={fid:.4f}')
+        print(f'Fid={fid:.6f}')
 
         if fid < min_plot_fid:
             if delete_bad_res:
@@ -79,11 +70,4 @@ def plot_good_results(base_dir: str, min_plot_fid: float = 0, delete_bad_res: bo
 
 
 if __name__ == '__main__':
-    # exp_path = 'autopt_cache/best_d2_gaussian_nonorm2.hjson'
-    # exp_cache_dir = 'autopt_cache/d2_gaussian_nonorm2'
-    #
-    # run_gate_exp_opt(exp_path, exp_cache_dir)
-
-    plot_good_results(r'high_anharm_cnot_50ns_all_signals_ftgu')
-
-    # get_alex_system()
+    plot_good_results(r'cnot_45ns_trial', min_plot_fid=0.999)
