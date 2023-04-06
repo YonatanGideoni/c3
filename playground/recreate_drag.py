@@ -38,8 +38,8 @@ def get_1q_system(gate_name, __t_final, __anharm):
         ),
         anhar=Quantity(
             value=__anharm,
-            min_val=-380e6,
-            max_val=-120e6,
+            min_val=-1e7,
+            max_val=-1e6,
             unit="Hz 2pi",
         ),
         hilbert_dim=qubit_lvls,
@@ -131,7 +131,7 @@ if __name__ == '__main__':
     t_final = 7e-9
     min_anharm = -10e6
     max_anharm = -500e6
-    
+
     for anharm in np.linspace(min_anharm, max_anharm, num=15):
         gate, model, generator = get_1q_system('rx90p', __t_final=t_final, __anharm=anharm)
         dir = f'rx90_{t_final * 1e9:.0f}ns_{anharm / 1e6:.0f}MHz_drag_recr_trial'
