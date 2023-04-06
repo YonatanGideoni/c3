@@ -4,7 +4,7 @@ import pickle
 import tempfile
 import warnings
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Callable
 
 import numpy as np
@@ -27,13 +27,6 @@ from playground.plot_utils import wait_for_not_mouse_press, plot_dynamics, get_i
 
 SIDEBAND = 50e6
 
-__shared_params = {'amp', 'xy_angle', 'freq_offset', 't_final', 'delta'}
-ENVELOPES_OPT_PARAMS = {'gaussian_nonorm': {'sigma'}, 'hann': set(), 'blackman_window': set(),
-                        'flattop_risefall': {'risefall'}}
-for env_params in ENVELOPES_OPT_PARAMS.values():
-    for shared_param in __shared_params:
-        env_params.add(shared_param)
-
 
 @dataclass
 class OptimiserParams:
@@ -44,7 +37,30 @@ class OptimiserParams:
     randomise_amps_order: bool = False
     amp_red_fctr: float = 0.5
     max_iter: int = 50
+    ignore_envs: tuple = ('gaussian_der_nonorm',)
+    rel_envs: tuple = None
+    envelopes_opt_params: dict = field(default_factory=lambda: {'gaussian_nonorm': {'sigma'}, 'hann': set(),
+                                                                'gaussian_der_nonorm': {'sigma'},
+                                                                'blackman_window': set(),
+                                                                'flattop_risefall': {'risefall'}})
     __WARN_MAX_AMP: float = 10.
+    __shared_params: dict = field(default_factory=lambda: {'amp', 'xy_angle', 'freq_offset', 't_final', 'delta'})
+
+    def __post_init__(self):
+        # keep only desired envelopes
+        if self.rel_envs is not None:
+            self.envelopes_opt_params = {env_name: env_params
+                                         for env_name, env_params in self.envelopes_opt_params.items()
+                                         if env_name in self.rel_envs}
+        else:
+            self.envelopes_opt_params = {env_name: env_params
+                                         for env_name, env_params in self.envelopes_opt_params.items()
+                                         if env_name not in self.ignore_envs}
+
+        # add the shared params to all the pulses
+        for env_params in self.envelopes_opt_params.values():
+            for shared_param in self.__shared_params:
+                env_params.add(shared_param)
 
     @property
     def def_pulse_params(self):
@@ -248,7 +264,7 @@ class LatentGridSamplingOptimiser:
         best_params_per_env = {driver: {} for driver in drivers}
         opt_map_params_per_env = {driver: {} for driver in drivers}
 
-        for env_name, env_to_opt_params in ENVELOPES_OPT_PARAMS.items():
+        for env_name, env_to_opt_params in self.optimiser_params.envelopes_opt_params.items():
             envelope_func = envelopes[env_name]
             env_name = env_name + pulse_suffix
             for driver in drivers:
