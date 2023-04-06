@@ -67,6 +67,7 @@ class OptimiserParams:
 
 
 # TODO - improve logging
+# TODO - improve documentation
 @dataclass
 class LatentGridSamplingOptimiser:
     optimiser_params: OptimiserParams = None
@@ -152,7 +153,7 @@ class LatentGridSamplingOptimiser:
 
     def find_opt_params_for_single_env(self, exp: Experiment, amp: Quantity, cache_path: str, driver: str = None,
                                        env_name: str = None, gate_name: str = None, MAX_PLOT_INFID: float = 0.0,
-                                       MAX_INFID_TO_CACHE: float = .3) -> tuple:
+                                       MAX_INFID_TO_CACHE: float = .1) -> tuple:
         infid_per_amp = {}
         params_per_amp = {}
         n_cached = 0
@@ -226,6 +227,7 @@ class LatentGridSamplingOptimiser:
         min_amp = self.optimiser_params.min_amp
         amp_red_fctr = self.optimiser_params.amp_red_fctr
 
+        # very important to reverse this - going from high to low amps works much better
         relevant_amps = (1 / amp_red_fctr) ** np.arange(np.log2(min_amp), np.log2(max_amp))[::-1]
 
         if self.optimiser_params.randomise_amps_order:
