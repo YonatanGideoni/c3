@@ -38,7 +38,7 @@ def get_1q_system(gate_name, __t_final, __anharm):
         ),
         anhar=Quantity(
             value=__anharm,
-            min_val=-1e7,
+            min_val=-1e9,
             max_val=-1e6,
             unit="Hz 2pi",
         ),
