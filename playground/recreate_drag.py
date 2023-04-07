@@ -133,6 +133,8 @@ if __name__ == '__main__':
     max_anharm = -500e6
 
     for anharm in np.linspace(min_anharm, max_anharm, num=15):
+        print(f'Current anharmonicity:{anharm / 1e6:.0f}MHz')
+
         gate, model, generator = get_1q_system('rx90p', __t_final=t_final, __anharm=anharm)
         dir = f'rx90_{t_final * 1e9:.0f}ns_{anharm / 1e6:.0f}MHz_drag_recr_trial'
 
