@@ -589,7 +589,7 @@ def get_ccx_system(t_final=100e-9, qubit_lvls=4):
 
 def get_2q_system(gate_name: str, qubit_lvls=4, __t_final=45e-9, doubly_resonant: bool = False):
     freq_q1 = 5e9
-    anhar_q1 = -310e6
+    anhar_q1 = -210e6
     t1_q1 = 27e-6
     t2star_q1 = 39e-6
     qubit_temp = 50e-3
@@ -608,7 +608,7 @@ def get_2q_system(gate_name: str, qubit_lvls=4, __t_final=45e-9, doubly_resonant
     freq_q2 = 5.6e9 if not doubly_resonant else freq_q1
     q2_freq_quantity = Quantity(value=freq_q2, min_val=5.595e9, max_val=5.605e9, unit='Hz 2pi') \
         if not doubly_resonant else deepcopy(q1.freq)
-    anhar_q2 = -340e6
+    anhar_q2 = -240e6
     t1_q2 = 23e-6
     t2star_q2 = 31e-6
     q2 = chip.Qubit(name="Q2", desc="Qubit 2",
@@ -786,13 +786,13 @@ def get_2q_system(gate_name: str, qubit_lvls=4, __t_final=45e-9, doubly_resonant
         (-SIDEBAND * __t_final) * 2 * np.pi % (2 * np.pi)
     )
 
-    return gate, model, generator
+    return gate, model, generator, (anharm1, anharm2)
 
 
 if __name__ == '__main__':
     t_final = 45e-9
-    gate, model, generator = get_2q_system('cx', __t_final=t_final)
-    dir = f'cnot_{t_final * 1e9:.0f}ns_trial'
+    gate, model, generator, (anharm1, anharm2) = get_2q_system('cx', __t_final=t_final)
+    dir = f'cnot_{t_final * 1e9:.0f}ns_{anharm1 / 1e6:.0f}_{anharm2 / 1e6:.0f}MHz_anharm_trial'
     # dir = f'test_high_anharm_cnot_{t_final * 1e9:.0f}ns_all_signals_ftgu'
 
     # gate, dir, model, generator = get_ccx_system(t_final=100e-9, qubit_lvls=3)
