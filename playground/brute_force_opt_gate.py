@@ -786,7 +786,7 @@ def get_2q_system(gate_name: str, qubit_lvls=4, __t_final=45e-9, doubly_resonant
         (-SIDEBAND * __t_final) * 2 * np.pi % (2 * np.pi)
     )
 
-    return gate, model, generator, (anharm1, anharm2)
+    return gate, model, generator, (anhar_q1, anhar_q2)
 
 
 if __name__ == '__main__':
