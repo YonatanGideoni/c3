@@ -108,11 +108,6 @@ class LatentGridSamplingOptimiser:
 
         return opt
 
-    def calc_exp_fid(self, exp: Experiment) -> float:
-        dims = exp.pmap.model.dims
-        index = list(range(len(dims)))
-        return (1 - unitary_infid_set(exp.propagators, exp.pmap.instructions, index, dims)).numpy()
-
     def get_qubits_population(self, population: np.array, dims: List[int]) -> np.array:
         """
         Splits the population of all levels of a system into the populations of levels per subsystem.
