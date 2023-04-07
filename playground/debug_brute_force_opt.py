@@ -35,7 +35,7 @@ def plot_exps_in_dir(dir_path: str, min_plot_fid: float = 0., delete_bad_res: bo
         exp.read_config(exp_path)
         exp.compute_propagators()
 
-        init_state = get_init_state(exp, energy_level=4)
+        init_state = get_init_state(exp, energy_level=1)
         gate = list(exp.pmap.instructions.values())[0]
         gate_name = gate.get_key()
         plot_dynamics(exp, init_state, [gate_name], disp_legend=True)
