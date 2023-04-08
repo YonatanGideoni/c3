@@ -37,10 +37,10 @@ class OptimiserParams:
     randomise_amps_order: bool = False
     amp_red_fctr: float = 0.5
     max_iter: int = 50
-    ignore_envs: tuple = ('gaussian_der_nonorm',)
+    ignore_envs: tuple = ('gaussian_der_mag_unity',)
     rel_envs: tuple = None
     envelopes_opt_params: dict = field(default_factory=lambda: {'gaussian_nonorm': {'sigma'}, 'hann': set(),
-                                                                'gaussian_der_nonorm': {'sigma'},
+                                                                'gaussian_der_mag_unity': {'sigma'},
                                                                 'blackman_window': set(),
                                                                 'flattop_risefall': {'risefall'}})
     __WARN_MAX_AMP: float = 10.
