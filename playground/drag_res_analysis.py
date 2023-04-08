@@ -1,6 +1,7 @@
 import os
 from collections import namedtuple
 
+import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 
@@ -87,13 +88,15 @@ if __name__ == '__main__':
 
     data['amp_ratio'] = data.gauss_der_amp / data.gauss_amp
     # TODO - make sure to explicitly mention this absolute value (via the sign swap)
-    data['exp_amp_ratio'] = -1e-6 / (data.anharm * data.gauss_sigma)  # 1e-6 because anharmonicity is measured in MHz
+    # 1e-6 because anharmonicity is measured in MHz
+    # adding 2pi factor based on caption of fig 1 here https://journals.aps.org/prl/pdf/10.1103/PhysRevLett.103.110501
+    data['exp_amp_ratio'] = -1e-6 / (2 * np.pi * data.anharm * data.gauss_sigma)
 
     # TODO - plot this such that the perfect fit is a straight line instead of a flat one?
     data['real_over_exp_amp_ratios'] = data.amp_ratio / data.exp_amp_ratio
 
     # TODO - throw the plots into functions
-    data.plot.scatter(x='anharm', y='real_over_exp_amp_ratios', marker='X')
+    data.plot.scatter(x='anharm', y='real_over_exp_amp_ratios')
     plt.axhline(1., c='k', linestyle='dashed')
 
     fs = 14
