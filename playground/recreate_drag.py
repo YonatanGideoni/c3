@@ -136,7 +136,7 @@ if __name__ == '__main__':
         print(f'Current anharmonicity:{anharm / 1e6:.0f}MHz')
 
         gate, model, generator = get_1q_system('rx90p', __t_final=t_final, __anharm=anharm)
-        dir = f'rx90_{t_final * 1e9:.0f}ns_{anharm / 1e6:.0f}MHz_drag_recr_trial_all_at_once'
+        dir = f'rx90_{t_final * 1e9:.0f}ns_{anharm / 1e6:.0f}MHz_drag_recr_ftgu'
 
         if not os.path.isdir(dir):
             os.mkdir(dir)
@@ -148,4 +148,4 @@ if __name__ == '__main__':
                                      rel_envs=('gaussian_nonorm', 'gaussian_der_mag_unity'))
 
         LatentGridSamplingOptimiser(optimiser_params=opt_params, verbose=True, debug=True) \
-            .optimize_gate(exp, gate, cache_dir=dir, n_pulses_to_add=2, opt_all_at_once=True)
+            .optimize_gate(exp, gate, cache_dir=dir, n_pulses_to_add=2, opt_all_at_once=False)
