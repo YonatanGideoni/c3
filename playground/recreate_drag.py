@@ -14,12 +14,10 @@ from c3.signal import pulse, gates
 from playground.brute_force_opt_gate import LatentGridSamplingOptimiser, OptimiserParams
 
 
-def get_1q_system(gate_name, __t_final, __anharm):
+def get_1q_system(gate_name, __t_final, __anharm, qubit_lvls: int = 4):
     lindblad = False
     dressed = True
-    qubit_lvls = 3
     freq = 5e9
-    init_temp = 0
     qubit_temp = 0
     sim_res = 100e9
     awg_res = 2e9
