@@ -14,12 +14,10 @@ from c3.signal import pulse, gates
 from playground.brute_force_opt_gate import LatentGridSamplingOptimiser, OptimiserParams
 
 
-def get_1q_system(gate_name, __t_final, __anharm):
+def get_1q_system(gate_name, __t_final, __anharm, qubit_lvls: int = 4):
     lindblad = False
     dressed = True
-    qubit_lvls = 3
     freq = 5e9
-    init_temp = 0
     qubit_temp = 0
     sim_res = 100e9
     awg_res = 2e9
@@ -133,8 +131,10 @@ if __name__ == '__main__':
     max_anharm = -500e6
 
     for anharm in np.linspace(min_anharm, max_anharm, num=15):
+        print(f'Current anharmonicity:{anharm / 1e6:.0f}MHz')
+
         gate, model, generator = get_1q_system('rx90p', __t_final=t_final, __anharm=anharm)
-        dir = f'rx90_{t_final * 1e9:.0f}ns_{anharm / 1e6:.0f}MHz_drag_recr_trial'
+        dir = f'rx90_{t_final * 1e9:.0f}ns_{anharm / 1e6:.0f}MHz_drag_recr_ftgu'
 
         if not os.path.isdir(dir):
             os.mkdir(dir)
@@ -142,8 +142,8 @@ if __name__ == '__main__':
         parameter_map = ParameterMap(instructions=[gate], model=model, generator=generator)
         exp = Experiment(pmap=parameter_map)
 
-        opt_params = OptimiserParams(normalise_pulses=False, max_amp=2, min_amp=1e-2,
-                                     rel_envs=('gaussian_nonorm', 'gaussian_der_nonorm'))
+        opt_params = OptimiserParams(normalise_pulses=False, max_amp=2, min_amp=1e-3,
+                                     rel_envs=('gaussian_nonorm', 'gaussian_der_mag_unity'))
 
         LatentGridSamplingOptimiser(optimiser_params=opt_params, verbose=True, debug=True) \
             .optimize_gate(exp, gate, cache_dir=dir, n_pulses_to_add=2, opt_all_at_once=False)
