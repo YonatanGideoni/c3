@@ -41,7 +41,7 @@ def get_freq_envs(n_freqs: int, t_final_2Q: float, max_freq: float = 300e6, max_
     return freq_envs_2Q_1, freq_envs_2Q_2
 
 
-def setup_experiment_opt_ctrl(exp: Experiment, maxiter: int = 2) -> OptimalControl:
+def setup_experiment_opt_ctrl(exp: Experiment, maxiter: int = 250) -> OptimalControl:
     n_qubits = len(exp.pmap.model.dims)
     fid_subspace = [f'Q{i + 1}' for i in range(n_qubits)]
 
