@@ -141,7 +141,7 @@ def delta_pulse(t, params):
 
 @env_reg_deco
 def fourier_sin(t, params):
-    """Fourier basis of the pulse constant pulse (sin).
+    """Fourier basis of frequency components
 
     Parameters
     ----------
