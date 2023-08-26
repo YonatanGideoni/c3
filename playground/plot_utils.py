@@ -67,9 +67,9 @@ def plot_signal(awg: AWG, drivers_signals: dict, t_final: float,
     n_drivers = len(drivers_signals)
     res_signal = np.zeros((n_drivers, len(signal_t)), dtype=np.complex128)
     fig, axs = plt.subplots(1, n_drivers, sharey="all")
-    if not isinstance(axs, list):
+    if not isinstance(axs, (list, np.ndarray)):
         axs = [axs]
-        
+
     for driver, envs in drivers_signals.items():
         driver_ind = int(driver[1:]) - 1
         for env in envs.values():
@@ -172,7 +172,7 @@ def plot_splitted_population(
     # create both subplots
     titles = list(exp.pmap.model.subsystems.keys())
     fig, axs = plt.subplots(1, len(splitted), sharey="all")
-    if not isinstance(axs, list):
+    if not isinstance(axs, (list, np.ndarray)):
         axs = [axs]
 
     for idx, ax in enumerate(axs):
