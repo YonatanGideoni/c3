@@ -70,4 +70,4 @@ def plot_good_results(base_dir: str, min_plot_fid: float = 0, delete_bad_res: bo
 
 
 if __name__ == '__main__':
-    plot_good_results(r'cnot_45ns_trial', min_plot_fid=0.999)
+    plot_good_results(r'cnot_45ns_-210_-240MHz_cz_aao', min_plot_fid=0.98)
